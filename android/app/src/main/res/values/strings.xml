@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Army Transport CMS</string>
+    <string name="title_activity_main">Army Transport CMS</string>
+    <string name="package_name">com.army.transport.cms</string>
+    <string name="custom_url_scheme">com.army.transport.cms</string>
+</resources>

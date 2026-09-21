@@ -1,0 +1,12 @@
+{
+	"appId": "com.army.transport.cms",
+	"appName": "Army Transport CMS",
+	"webDir": "capacitor-web",
+	"server": {
+		"url": "",
+		"androidScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": true
+	}
+}

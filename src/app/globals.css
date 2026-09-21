@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ---------- Vehicle map markers (shared by Google Maps + Leaflet) ---------- */
+.vmarker {
+  position: relative;
+  transform: translate(-7px, -7px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.vdot {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 25%, transparent);
+  flex-shrink: 0;
+}
+.vtag {
+  background: rgba(14, 20, 9, 0.92);
+  color: #eee8d0;
+  border: 1.5px solid currentColor;
+  padding: 2px 8px 3px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.vtag i {
+  font-style: normal;
+  font-weight: 500;
+  font-size: 9px;
+  color: #b5aa88;
+  margin-left: 5px;
+}
+.vm-green { color: #34d399; }
+.vm-amber { color: #fbbf24; }
+.vm-red { color: #f87171; }
+.vm-gold { color: #d4c48a; }
+
+.vm-pulse .vdot {
+  animation: vpulse 1.4s ease-out infinite;
+}
+@keyframes vpulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px color-mix(in srgb, currentColor 0%, transparent); }
+}
+
+/* Leaflet dark-ish theme tweaks so it fits the army UI */
+.leaflet-container {
+  background: #0d120b;
+  font-family: inherit;
+}
+.leaflet-control-attribution {
+  background: rgba(14, 20, 9, 0.8) !important;
+  color: #8b8064 !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: #a89a76 !important;
+}
+.leaflet-control-zoom a {
+  background: #1e2a16 !important;
+  color: #eee8d0 !important;
+  border-color: rgba(139, 111, 46, 0.4) !important;
+}
+
+/* Slim scrollbars for the panels */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4a3a1a transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #4a3a1a;
+  border-radius: 3px;
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a2215" />
+    <title>Army Transport CMS</title>
+    <style>
+      html, body { margin:0; height:100%; background:#1a2215; color:#eee8d0; font-family: system-ui, sans-serif; display:flex; align-items:center; justify-content:center; }
+      .card { text-align:center; padding:32px; }
+      .bar { width:120px; height:3px; margin:18px auto 0; background:#8b6f2e; animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }
+      .warn { color:#e8b04b; font-size:13px; max-width:340px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div style="font-size:40px;">&#9733;</div>
+      <h1 style="font-size:20px; margin:10px 0 6px;">AI TRANSPORT</h1>
+      <p style="font-size:13px; color:#b5aa88; margin:0 0 4px;">Connecting to command server…</p>
+      <div class="bar"></div>
+      <p class="warn" id="warn" style="display:none; margin-top:18px;">
+        No server URL configured. Set <code>server.url</code> in
+        capacitor.config.ts to the address where this app is running, then
+        run <code>npx cap sync android</code> and rebuild the APK.
+      </p>
+      <script>
+        // If the app shell was opened without a server URL, warn the user.
+        try {
+          if (location.origin.startsWith("http") === false || location.protocol === "capacitor") {
+            // loaded from bundled assets — check the Capacitor bridge URL
+            const cfg = window.CAPACITOR && window.CAPACITOR.getServerConfig && window.CAPACITOR.getServerConfig();
+            if (cfg && !cfg.url) setTimeout(() => { document.getElementById("warn").style.display = "block"; }, 2500);
+          }
+        } catch (e) { /* ignore */ }
+      </script>
+    </div>
+  </body>
+</html>
