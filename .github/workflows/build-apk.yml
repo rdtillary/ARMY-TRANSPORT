@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: "Your live website URL, e.g. https://army-transport.onrender.com"
+        description: "Your live website URL, e.g. https://mctetransportsys.onrender.com"
         required: true
-        default: "https://army-transport.onrender.com"
+        default: "https://mctetransportsys.onrender.com"
   push:
     branches: [main, master]
 
@@ -31,8 +31,19 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Prints exactly what was uploaded — invaluable if a later step fails.
+      - name: Show uploaded project files
+        run: |
+          echo "===== FILE TREE (top 3 levels) ====="
+          find . -maxdepth 3 -type f -not -path './.git/*' | sort
+          echo "===== KEY FILES CHECK ====="
+          for f in package.json package-lock.json capacitor.config.ts scripts/gen-icons.mjs public/mcte-logo.png; do
+            if [ -f "$f" ]; then echo "PRESENT: $f"; else echo "MISSING: $f"; fi
+          done
+
+      # Works whether or not package-lock.json exists.
       - name: Install web dependencies
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Point the app at the live server URL
         if: github.event_name == 'workflow_dispatch'
@@ -41,22 +52,35 @@ jobs:
           echo "App will load: ${{ github.event.inputs.server_url }}"
           grep 'url:' capacitor.config.ts
 
-      # Robustness: ensure the native project + web shell exist even if the
-      # GitHub website upload missed a folder.
+      # Rebuilds android/ from scratch if it is missing or incompletely uploaded.
       - name: Prepare native project
         run: |
           mkdir -p capacitor-web
           if [ ! -f capacitor-web/index.html ]; then
             printf '%s\n' '<!doctype html><html><head><title>MCTE Transport</title></head><body>Loading…</body></html>' > capacitor-web/index.html
           fi
-          if [ ! -d android ]; then
-            echo "android/ folder missing — generating it"
+          if [ ! -f android/gradlew ]; then
+            echo "android project missing/incomplete — generating a fresh one"
+            rm -rf android
             npx cap add android
+          else
+            echo "android project found"
           fi
+          # Ensure GPS + network permissions exist (idempotent).
+          if ! grep -q "ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml; then
+            echo "Injecting location permissions"
+            sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
+          fi
+          grep -n "uses-permission" android/app/src/main/AndroidManifest.xml || true
 
-      # PWA icon + every Android launcher icon density from public/mcte-logo.png
+      # Non-blocking: if the logo/sharp is absent, the APK still builds with a default icon.
       - name: Generate app icons from logo
-        run: node scripts/gen-icons.mjs
+        run: |
+          if [ -f public/mcte-logo.png ]; then
+            node scripts/gen-icons.mjs || echo "::warning::Icon generation failed — continuing with default icon"
+          else
+            echo "::warning::public/mcte-logo.png not found in repo — continuing with default icon"
+          fi
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
