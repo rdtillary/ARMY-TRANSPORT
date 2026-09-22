@@ -1,7 +1,16 @@
-/* Army Transport CMS — minimal offline-shell service worker.
-   Network-first for pages and APIs (live data), cache fallback for static assets. */
-const CACHE = "army-transport-v2";
-const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-512.png"];
+/* MCTE Transport — offline-capable service worker.
+   Network-first for pages/APIs (live data), cache-first for static assets,
+   branded offline page when the network is down. */
+const CACHE = "mcte-transport-v4";
+const SHELL = [
+  "/",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/mcte-logo.png",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-maskable-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -9,6 +18,7 @@ self.addEventListener("install", (event) => {
       .open(CACHE)
       .then((cache) => cache.addAll(SHELL))
       .then(() => self.skipWaiting())
+      .catch(() => self.skipWaiting())
   );
 });
 
@@ -27,41 +37,50 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  // Always go network-first for navigations and API calls so live data is fresh.
   const isNavigation = req.mode === "navigate";
   const isApi = url.pathname.startsWith("/api/");
-  if (isNavigation || isApi) {
+
+  if (isNavigation) {
     event.respondWith(
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          if (isNavigation) caches.open(CACHE).then((c) => c.put(req, copy));
+          caches.open(CACHE).then((c) => c.put(req, copy));
           return res;
         })
-        .catch(async () => {
-          if (isApi) {
-            return new Response(JSON.stringify({ offline: true }), {
-              status: 503,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          const cached = await caches.match(req);
-          return cached || Response.error();
-        })
+        .catch(async () => (await caches.match(req)) || caches.match("/offline.html"))
     );
     return;
   }
 
-  // Static assets: cache-first, then network.
+  if (isApi) {
+    // Never cache API responses; return a JSON 503 offline instead of hanging.
+    event.respondWith(
+      fetch(req).catch(
+        () =>
+          new Response(JSON.stringify({ offline: true }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          })
+      )
+    );
+    return;
+  }
+
+  // Static assets: cache-first, then network. Never cache error responses.
   event.respondWith(
     caches.match(req).then(
       (cached) =>
         cached ||
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
+        fetch(req)
+          .then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(req, copy));
+            }
+            return res;
+          })
+          .catch(() => Response.error())
     )
   );
 });

@@ -1,15 +1,20 @@
 {
+  "id": "/",
   "name": "MCTE — AI Transport & Road Space Management",
   "short_name": "MCTE Transport",
-  "description": "AI based transport and road space management system, Military College of Telecommunication Engineering (MCTE).",
+  "description": "AI based transport and road space management system — officer command, JCO monitoring and driver GPS tracking terminals.",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["government", "productivity", "utilities"],
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#141b10",
   "theme_color": "#1a2215",
   "icons": [
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
@@ -21,7 +26,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
