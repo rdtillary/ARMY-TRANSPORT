@@ -1,0 +1,75 @@
+name: Build Android APK
+
+# Compiles MCTE-Transport-APK (app-debug.apk) on GitHub's servers.
+# Run it from: Actions tab -> Build Android APK -> Run workflow -> enter live URL.
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: "Your live website URL, e.g. https://army-transport.onrender.com"
+        required: true
+        default: "https://army-transport.onrender.com"
+  push:
+    branches: [main, master]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install web dependencies
+        run: npm install
+
+      - name: Point the app at the live server URL
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i 's#url: ""#url: "${{ github.event.inputs.server_url }}"#' capacitor.config.ts
+          echo "App will load: ${{ github.event.inputs.server_url }}"
+          grep 'url:' capacitor.config.ts
+
+      # Robustness: ensure the native project + web shell exist even if the
+      # GitHub website upload missed a folder.
+      - name: Prepare native project
+        run: |
+          mkdir -p capacitor-web
+          if [ ! -f capacitor-web/index.html ]; then
+            printf '%s\n' '<!doctype html><html><head><title>MCTE Transport</title></head><body>Loading…</body></html>' > capacitor-web/index.html
+          fi
+          if [ ! -d android ]; then
+            echo "android/ folder missing — generating it"
+            npx cap add android
+          fi
+
+      # PWA icon + every Android launcher icon density from public/mcte-logo.png
+      - name: Generate app icons from logo
+        run: node scripts/gen-icons.mjs
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCTE-Transport-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
