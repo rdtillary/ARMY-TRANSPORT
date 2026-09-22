@@ -1,6 +1,6 @@
 /* Army Transport CMS — minimal offline-shell service worker.
    Network-first for pages and APIs (live data), cache fallback for static assets. */
-const CACHE = "army-transport-v1";
+const CACHE = "army-transport-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

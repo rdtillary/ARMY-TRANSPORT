@@ -56,7 +56,7 @@ Total time: ~20 minutes. No coding required.
    - **Environment:** Node
    - **Runtime:** Nixpacks (default is fine)
    - **Plan:** Free
-   - **Build Command:** `npm ci && npm run build`   ← must include `&& npm run build`!
+   - **Build Command:** `npm install && node scripts/gen-icons.mjs && npm run build`
    - **Start Command:** `npm start`
 4. Scroll to **Environment Variables** and add:
    - `DATABASE_URL` = the database URL you copied in Step 2
@@ -107,7 +107,7 @@ endpoint disappears.)
 
 | Symptom | Fix |
 |---|---|
-| Deploy fails: "Could not find a production build" | Build Command must be exactly `npm ci && npm run build` (not just `npm ci`) |
+| Deploy fails: "Could not find a production build" | Build Command must be `npm install && node scripts/gen-icons.mjs && npm run build` |
 | Deploy fails in "build" stage | Make sure `package-lock.json` was uploaded; check Build Command above |
 | App loads but login fails | `DATABASE_URL` env var is wrong/missing, or you never visited `/api/setup` |
 | `/api/setup` returns an error JSON | It prints the DB error — almost always the URL. Recopy it exactly, including `?sslmode=require` |

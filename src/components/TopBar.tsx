@@ -22,11 +22,11 @@ export default function TopBar({
     <header className="sticky top-0 z-[800] bg-[#1a2215]/95 backdrop-blur border-b border-[#8b6f2e]/25">
       <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <McteLogo size={30} className="shrink-0 drop-shadow-[0_2px_8px_rgba(69,137,227,0.35)]" />
+          <McteLogo size={30} className="shrink-0 drop-shadow-[0_2px_8px_rgba(220,40,40,0.45)]" />
           <div className="min-w-0">
             <div className="font-extrabold leading-none tracking-tight text-[#eee8d0] truncate">
               AI TRANSPORT
-              <span className="hidden md:inline text-[10px] font-bold tracking-[0.25em] text-[#8fb4e8] ml-2 align-middle">
+              <span className="hidden md:inline text-[10px] font-bold tracking-[0.25em] text-[#d4c48a] ml-2 align-middle">
                 MCTE
               </span>
             </div>

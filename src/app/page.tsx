@@ -35,8 +35,8 @@ export default function LoginPage() {
   if (checking) {
     return (
       <div className="min-h-screen bg-[#141b10] flex flex-col items-center justify-center text-[#eee8d0] px-6">
-        <McteLogo size={76} className="mb-4 drop-shadow-[0_4px_18px_rgba(69,137,227,0.35)]" />
-        <div className="text-[11px] tracking-[0.3em] text-[#8fb4e8] font-bold text-center">
+        <McteLogo size={76} className="mb-4 drop-shadow-[0_4px_18px_rgba(220,40,40,0.45)]" />
+        <div className="text-[11px] tracking-[0.3em] text-[#d4c48a] font-bold text-center">
           MILITARY COLLEGE OF TELECOMMUNICATION ENGINEERING
         </div>
         <div className="text-sm tracking-[0.35em] text-[#d4c48a] font-bold mt-2">AI TRANSPORT</div>
@@ -85,9 +85,9 @@ export default function LoginPage() {
         <div className="relative z-10 w-full max-w-3xl">
           <div className="text-center mb-9">
             <div className="flex items-center justify-center gap-4 mb-5">
-              <McteLogo size={88} className="drop-shadow-[0_6px_22px_rgba(69,137,227,0.35)]" />
+              <McteLogo size={96} className="drop-shadow-[0_6px_24px_rgba(220,40,40,0.4)]" />
             </div>
-            <p className="text-[11px] md:text-xs font-bold tracking-[0.28em] text-[#8fb4e8] uppercase">
+            <p className="text-[11px] md:text-xs font-bold tracking-[0.28em] text-[#d4c48a] uppercase">
               Military College of Telecommunication Engineering
             </p>
             <p className="text-[10px] md:text-[11px] font-bold tracking-[0.32em] text-[#b08d3c] mt-1">

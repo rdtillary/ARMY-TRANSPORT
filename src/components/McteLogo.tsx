@@ -1,6 +1,6 @@
-/* Official MCTE formation sign — used as the actual asset, never redrawn.
-   Transparent PNG cutout of the official crest (public/mcte-logo.png);
-   original source file kept untouched at public/mcte-logo-original.jpg. */
+/* Indian Army circular insignia — official vector-sourced asset, never redrawn.
+   Transparent 1024px PNG at public/mcte-logo.png;
+   original vector source kept at public/indian-army-logo-original.svg. */
 export default function McteLogo({
   size = 64,
   className = "",
@@ -9,17 +9,16 @@ export default function McteLogo({
   className?: string;
   withRing?: boolean;
 }) {
-  // Source aspect ratio is 244 x 267.
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src="/mcte-logo.png"
       width={size}
-      height={Math.round(size * 1.094)}
-      alt="MCTE crest"
+      height={size}
+      alt="Indian Army insignia"
       draggable={false}
       className={`select-none ${className}`}
-      style={{ width: size, height: Math.round(size * 1.094) }}
+      style={{ width: size, height: size }}
     />
   );
 }

@@ -204,9 +204,9 @@ export default function DriverPage() {
 
         <header className="flex items-center justify-between gap-3 px-5 py-3 z-10">
           <div className="flex items-center gap-2.5 min-w-0">
-            <McteLogo size={34} className="shrink-0 drop-shadow-[0_2px_8px_rgba(69,137,227,0.35)]" />
+            <McteLogo size={34} className="shrink-0 drop-shadow-[0_2px_8px_rgba(220,40,40,0.45)]" />
             <div className="min-w-0">
-              <div className="text-[9px] leading-tight font-bold tracking-[0.16em] text-[#8fb4e8] uppercase truncate">
+              <div className="text-[9px] leading-tight font-bold tracking-[0.16em] text-[#d4c48a] uppercase truncate">
                 Military College of Telecommunication Engineering
               </div>
               <div className="text-[10px] font-bold tracking-[0.25em] text-[#b08d3c]">MCTE · DRIVER</div>
