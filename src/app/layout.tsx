@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Transport & Road Space Management — Army Command",
+  title: "MCTE — AI Transport & Road Space Management",
   description:
-    "AI based transport and road space management system for army command, monitoring and driver trip entry.",
+    "AI based transport and road space management system for the Military College of Telecommunication Engineering (MCTE) — officer command, JCO monitoring and driver GPS tracking terminals.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

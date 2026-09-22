@@ -1,3 +1,7 @@
+> **Want the website itself to be online permanently (not the temporary
+> sandbox)?** Follow **`DEPLOY.md`** — free GitHub + Render hosting with a
+> permanent URL, step by step, no coding.
+
 # Army Transport CMS — Getting It on Your Phone
 
 > An APK is a compiled binary — it must be built with the Android toolchain

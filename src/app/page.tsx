@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, Truck, Star, ChevronsUp, Lock, User, AlertCircle } from "lucide-react";
 import { saveSession, getSession, type Session } from "@/lib/session";
+import McteLogo from "@/components/McteLogo";
 
 type Role = "officer" | "jco" | "driver";
 
@@ -33,11 +34,12 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-[#141b10] flex flex-col items-center justify-center text-[#eee8d0]">
-        <div className="p-4 rounded-2xl bg-[#8b6f2e]/15 text-[#d4c48a] mb-4">
-          <Shield size={38} />
+      <div className="min-h-screen bg-[#141b10] flex flex-col items-center justify-center text-[#eee8d0] px-6">
+        <McteLogo size={76} className="mb-4 drop-shadow-[0_4px_18px_rgba(69,137,227,0.35)]" />
+        <div className="text-[11px] tracking-[0.3em] text-[#8fb4e8] font-bold text-center">
+          MILITARY COLLEGE OF TELECOMMUNICATION ENGINEERING
         </div>
-        <div className="text-sm tracking-[0.35em] text-[#a89a76] font-bold">AI TRANSPORT</div>
+        <div className="text-sm tracking-[0.35em] text-[#d4c48a] font-bold mt-2">AI TRANSPORT</div>
         <div className="mt-3 text-xs text-[#6d6349] animate-pulse">Restoring session…</div>
       </div>
     );
@@ -82,17 +84,23 @@ export default function LoginPage() {
       {!role ? (
         <div className="relative z-10 w-full max-w-3xl">
           <div className="text-center mb-9">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-[#8b6f2e]/30 to-[#4a3a1a]/60 border border-[#8b6f2e]/40 mb-4 shadow-2xl shadow-[#8b6f2e]/10">
-              <Truck size={40} className="text-[#d4c48a]" />
+            <div className="flex items-center justify-center gap-4 mb-5">
+              <McteLogo size={88} className="drop-shadow-[0_6px_22px_rgba(69,137,227,0.35)]" />
             </div>
+            <p className="text-[11px] md:text-xs font-bold tracking-[0.28em] text-[#8fb4e8] uppercase">
+              Military College of Telecommunication Engineering
+            </p>
+            <p className="text-[10px] md:text-[11px] font-bold tracking-[0.32em] text-[#b08d3c] mt-1">
+              MCTE · MHOW
+            </p>
+            <div className="mx-auto my-4 h-px w-40 bg-gradient-to-r from-transparent via-[#8b6f2e] to-transparent" />
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter text-[#eee8d0] leading-none">
               AI TRANSPORT
             </h1>
             <h2 className="text-base md:text-xl font-light text-[#c8b896] tracking-[0.35em] mt-3">
               ROAD SPACE MANAGEMENT
             </h2>
-            <div className="mx-auto mt-4 h-px w-28 bg-gradient-to-r from-transparent via-[#8b6f2e] to-transparent" />
-            <p className="text-sm text-[#a89a76] mt-3 tracking-wide">
+            <p className="text-sm text-[#a89a76] mt-4 tracking-wide">
               ARMY COMMAND SYSTEM — SELECT YOUR TERMINAL
             </p>
           </div>
@@ -194,8 +202,9 @@ export default function LoginPage() {
         </div>
       )}
 
-      <footer className="relative z-10 mt-10 text-[#6d6349] text-[11px] tracking-[0.25em] text-center">
-        SECURE CONNECTION • ENCRYPTED • ARMY NETWORK
+      <footer className="relative z-10 mt-10 text-[#6d6349] text-[10px] md:text-[11px] tracking-[0.2em] md:tracking-[0.25em] text-center uppercase">
+        Military College of Telecommunication Engineering · Mhow
+        <span className="block mt-1 tracking-[0.25em]">Secure connection · Encrypted · Army network</span>
       </footer>
     </div>
   );

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.army.transport.cms",
-  appName: "Army Transport CMS",
+  appName: "MCTE Transport",
   // webDir holds the static app shell; the live app is loaded from server.url below.
   webDir: "capacitor-web",
   server: {

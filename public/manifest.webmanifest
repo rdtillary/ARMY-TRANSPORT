@@ -1,11 +1,11 @@
 {
-  "name": "AI Transport & Road Space Management",
-  "short_name": "Army Transport",
-  "description": "AI based transport and road space management system for army command.",
+  "name": "MCTE — AI Transport & Road Space Management",
+  "short_name": "MCTE Transport",
+  "description": "AI based transport and road space management system, Military College of Telecommunication Engineering (MCTE).",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#1a2215",
+  "background_color": "#141b10",
   "theme_color": "#1a2215",
   "icons": [
     {

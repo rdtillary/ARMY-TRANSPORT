@@ -1,6 +1,6 @@
 {
 	"appId": "com.army.transport.cms",
-	"appName": "Army Transport CMS",
+	"appName": "MCTE Transport",
 	"webDir": "capacitor-web",
 	"server": {
 		"url": "",

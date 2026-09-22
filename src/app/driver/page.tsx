@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Square, Siren, LogOut, ChevronDown, Radio, Satellite, MapPin } from "lucide-react";
 import MapView from "@/components/MapView";
+import McteLogo from "@/components/McteLogo";
 import { getSession, clearSession, type Session } from "@/lib/session";
 import { startGeoWatch, type GeoPos } from "@/lib/geo";
 import { createSimulator, BASE_POS } from "@/lib/simulate";
@@ -201,14 +202,19 @@ export default function DriverPage() {
           </div>
         )}
 
-        <header className="flex items-center justify-between px-5 py-4 z-10">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-[#a89a76] font-bold">Driver terminal</div>
-            <div className="text-sm font-extrabold mt-0.5 truncate">{session.name}</div>
+        <header className="flex items-center justify-between gap-3 px-5 py-3 z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <McteLogo size={34} className="shrink-0 drop-shadow-[0_2px_8px_rgba(69,137,227,0.35)]" />
+            <div className="min-w-0">
+              <div className="text-[9px] leading-tight font-bold tracking-[0.16em] text-[#8fb4e8] uppercase truncate">
+                Military College of Telecommunication Engineering
+              </div>
+              <div className="text-[10px] font-bold tracking-[0.25em] text-[#b08d3c]">MCTE · DRIVER</div>
+            </div>
           </div>
           <button
             onClick={logout}
-            className="p-2.5 rounded-xl border border-[#4a3a2a]/40 text-[#6d5f45] hover:text-[#eee8d0] transition"
+            className="p-2.5 rounded-xl border border-[#4a3a2a]/40 text-[#6d5f45] hover:text-[#eee8d0] transition shrink-0"
             aria-label="Log out"
           >
             <LogOut size={17} />
@@ -316,6 +322,7 @@ export default function DriverPage() {
         {/* status chip + GPS helpers */}
         <div className="absolute top-3 inset-x-0 z-[660] flex flex-col items-center gap-2 px-3 pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-2.5 bg-[#141c0e]/95 border border-[#8b6f2e]/40 rounded-2xl px-4 py-2 shadow-xl">
+            <McteLogo size={18} className="shrink-0" />
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-extrabold text-sm">{trip.regNo}</span>
             <span className="text-xs text-[#a89a76]">
