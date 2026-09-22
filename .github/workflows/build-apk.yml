@@ -1,13 +1,14 @@
 name: Build Android APK
 
-# Compiles MCTE-Transport-APK (app-debug.apk) on GitHub's servers.
-# Run it from: Actions tab -> Build Android APK -> Run workflow -> enter live URL.
+# Fully self-contained APK builder. The only thing it needs from your repo is
+# public/mcte-logo.png. Everything else (config, android project, icon script)
+# is generated here so partial/failed uploads cannot break the build.
 
 on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: "Your live website URL, e.g. https://mctetransportsys.onrender.com"
+        description: "Your live website URL (no trailing slash)"
         required: true
         default: "https://mctetransportsys.onrender.com"
   push:
@@ -23,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -31,56 +32,122 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Prints exactly what was uploaded — invaluable if a later step fails.
       - name: Show uploaded project files
         run: |
-          echo "===== FILE TREE (top 3 levels) ====="
+          echo "===== FILE TREE ====="
           find . -maxdepth 3 -type f -not -path './.git/*' | sort
-          echo "===== KEY FILES CHECK ====="
-          for f in package.json package-lock.json capacitor.config.ts scripts/gen-icons.mjs public/mcte-logo.png; do
+          echo "===== KEY FILES ====="
+          for f in package.json public/mcte-logo.png; do
             if [ -f "$f" ]; then echo "PRESENT: $f"; else echo "MISSING: $f"; fi
           done
 
-      # Works whether or not package-lock.json exists.
-      - name: Install web dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install the exact packages required to build the APK
+        run: |
+          npm install --no-audit --no-fund --legacy-peer-deps || true
+          npm install --no-audit --no-fund --legacy-peer-deps \
+            @capacitor/core@^8.5.0 \
+            @capacitor/cli@^8.5.0 \
+            @capacitor/android@^8.5.0 \
+            @capacitor/geolocation@^8.2.2 \
+            sharp@^0.35.4
+
+      - name: Write Capacitor config and web shell
+        run: |
+          mkdir -p capacitor-web scripts public
+          cat > capacitor-web/index.html <<'HTMLEOF'
+          <!doctype html><html lang="en"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+          <title>MCTE Transport</title>
+          <style>body{margin:0;height:100vh;background:#141b10;color:#eee8d0;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+          .b{width:60px;height:60px;border-radius:50%;border:3px solid #8b6f2e;border-top-color:transparent;animation:s 1s linear infinite}
+          @keyframes s{to{transform:rotate(360deg)}}</style></head>
+          <body><div style="text-align:center"><div class="b" style="margin:0 auto 16px"></div>Connecting to command server…</div></body></html>
+          HTMLEOF
+          cat > capacitor.config.ts <<'TSEOF'
+          import type { CapacitorConfig } from "@capacitor/cli";
+          const config: CapacitorConfig = {
+            appId: "com.army.transport.cms",
+            appName: "MCTE Transport",
+            webDir: "capacitor-web",
+            server: { url: "", androidScheme: "https" },
+            android: { allowMixedContent: true },
+          };
+          export default config;
+          TSEOF
+          echo "Config written:"; cat capacitor.config.ts
+
+      - name: Validate the logo file
+        run: |
+          if [ ! -f public/mcte-logo.png ]; then
+            echo "::error::public/mcte-logo.png IS MISSING FROM THE REPO."
+            echo "::error::Fix: open your repo on GitHub -> click into the public folder -> Add file -> Upload files -> upload mcte-logo.png -> Commit, then Run workflow again."
+            exit 1
+          fi
+          ls -la public/mcte-logo.png
 
       - name: Point the app at the live server URL
         if: github.event_name == 'workflow_dispatch'
         run: |
           sed -i 's#url: ""#url: "${{ github.event.inputs.server_url }}"#' capacitor.config.ts
-          echo "App will load: ${{ github.event.inputs.server_url }}"
-          grep 'url:' capacitor.config.ts
+          echo "Final config:"; grep 'url:' capacitor.config.ts
 
-      # Rebuilds android/ from scratch if it is missing or incompletely uploaded.
-      - name: Prepare native project
+      - name: Generate a fresh native Android project
         run: |
-          mkdir -p capacitor-web
-          if [ ! -f capacitor-web/index.html ]; then
-            printf '%s\n' '<!doctype html><html><head><title>MCTE Transport</title></head><body>Loading…</body></html>' > capacitor-web/index.html
-          fi
-          if [ ! -f android/gradlew ]; then
-            echo "android project missing/incomplete — generating a fresh one"
-            rm -rf android
-            npx cap add android
-          else
-            echo "android project found"
-          fi
-          # Ensure GPS + network permissions exist (idempotent).
+          rm -rf android
+          npx cap add android
           if ! grep -q "ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml; then
-            echo "Injecting location permissions"
             sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
           fi
-          grep -n "uses-permission" android/app/src/main/AndroidManifest.xml || true
+          echo "Permissions:"; grep "uses-permission" android/app/src/main/AndroidManifest.xml || true
 
-      # Non-blocking: if the logo/sharp is absent, the APK still builds with a default icon.
-      - name: Generate app icons from logo
+      - name: Write the icon generator
         run: |
-          if [ -f public/mcte-logo.png ]; then
-            node scripts/gen-icons.mjs || echo "::warning::Icon generation failed — continuing with default icon"
-          else
-            echo "::warning::public/mcte-logo.png not found in repo — continuing with default icon"
-          fi
+          cat > scripts/gen-icons.mjs <<'EOF'
+          import sharp from "sharp";
+          import { mkdirSync, writeFileSync } from "fs";
+
+          const LOGO = "public/mcte-logo.png";
+          const BG = { r: 217, g: 0, b: 0, alpha: 1 }; // #D90000 insignia red
+
+          async function plate(size, ratio) {
+            const logo = await sharp(LOGO)
+              .resize(Math.round(size * ratio), Math.round(size * ratio), { fit: "inside" })
+              .png().toBuffer();
+            return sharp({ create: { width: size, height: size, channels: 4, background: BG } })
+              .composite([{ input: logo, gravity: "center" }]).png().toBuffer();
+          }
+          async function foreground(size) {
+            const logo = await sharp(LOGO)
+              .resize(Math.round(size * 0.66), Math.round(size * 0.66), { fit: "inside" })
+              .png().toBuffer();
+            return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+              .composite([{ input: logo, gravity: "center" }]).png().toBuffer();
+          }
+
+          const valuesDir = "android/app/src/main/res/values";
+          mkdirSync(valuesDir, { recursive: true });
+          writeFileSync(`${valuesDir}/ic_launcher_background.xml`,
+            '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#D90000</color>\n</resources>\n');
+
+          await sharp(await plate(512, 0.95)).toFile("public/icons/icon-512.png");
+
+          const dir = (d) => `android/app/src/main/res/mipmap-${d}`;
+          const fgSizes = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 };
+          const legacySizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
+          for (const [d, s] of Object.entries(fgSizes)) {
+            mkdirSync(dir(d), { recursive: true });
+            await sharp(await foreground(s)).toFile(`${dir(d)}/ic_launcher_foreground.png`);
+          }
+          for (const [d, s] of Object.entries(legacySizes)) {
+            const buf = await plate(s, 0.98);
+            await sharp(buf).toFile(`${dir(d)}/ic_launcher.png`);
+            await sharp(buf).toFile(`${dir(d)}/ic_launcher_round.png`);
+          }
+          console.log("launcher icons generated from public/mcte-logo.png");
+          EOF
+
+      - name: Generate app icons from the logo
+        run: node scripts/gen-icons.mjs
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
