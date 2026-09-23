@@ -105,7 +105,8 @@ npx cap sync android
 ## 4. On the phone
 
 1. Open **Army Transport CMS** from the home screen.
-2. Log in as **Driver** (e.g. `DRV-3003` / `army123`).
+2. Log in with a driver account created from the Admin terminal (the Admin
+   login itself is ID `admin` / `admin`).
 3. Allow the **location permission** when Android asks (required for GPS).
 4. Select vehicle → **START MOVEMENT** → tracking begins.
    The officer & JCO terminals see the vehicle number + position live on their maps.
@@ -118,10 +119,8 @@ npx cap sync android
 
 | Terminal | Service No | Password |
 |---|---|---|
-| Officer | OFC-1001 | army123 |
-| JCO     | JCO-2002 | army123 |
-| Driver  | DRV-3003 | army123 |
-| Driver  | DRV-3004 | army123 |
+| Admin (central control room) | admin | admin |
+| JCO / Driver | created by the Admin from the Personnel panel | set at creation (default `army123`) |
 
 ## Database
 

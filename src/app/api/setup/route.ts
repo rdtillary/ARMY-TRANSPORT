@@ -78,13 +78,16 @@ const DDL = [
   )`,
 ];
 
+// One-time migration: the only built-in account is the central control room
+// administrator (id "ADMIN", password "admin"). All other accounts are created
+// from the Admin terminal's Personnel & Fleet Administration panel.
+const DEMO_SERVICE_NOS = ["OFC-1001", "JCO-2002", "DRV-3003", "DRV-3004"];
+
 const SEED = [
   `insert into users (name, role, service_no, unit, password) values
-    ('Col. A. Verma',  'officer', 'OFC-1001', 'HQ 7th Armoured', 'army123'),
-    ('WO R. Iyer',     'jco',     'JCO-2002', '7th Armoured',    'army123'),
-    ('Sgt D. Rathore', 'driver',  'DRV-3003', '7th Armoured',    'army123'),
-    ('Cpl K. Nair',    'driver',  'DRV-3004', '12th Mechanised', 'army123')
-   on conflict (service_no) do nothing`,
+    ('Control Room Admin', 'officer', 'ADMIN', 'Central Control Room', 'admin')
+   on conflict (service_no) do update
+    set password = excluded.password, role = 'officer', unit = 'Central Control Room'`,
   `insert into vehicles (reg_no, type, unit, fuel_pct, mileage, maintenance_due, status) values
     ('0012 AB 3456', 'Scout Car (Mahindra)', '7th Armoured',    82, 12450, '2026-03-15', 'available'),
     ('0045 KJ 2231', 'Truck 5T (Tata)',      '7th Armoured',    67, 48210, '2026-02-28', 'available'),
@@ -98,6 +101,31 @@ const SEED = [
 export async function GET() {
   try {
     for (const stmt of DDL) await pool.query(stmt);
+
+    // One-time removal of old demo accounts (only runs until ADMIN exists).
+    const adminCheck = await pool.query(`select 1 from users where service_no = 'ADMIN' limit 1`);
+    if (adminCheck.rowCount === 0) {
+      const ids = DEMO_SERVICE_NOS.map((_, i) => `$${i + 1}`).join(",");
+      const demoCleanup = [
+        `delete from positions where trip_id in (
+           select t.id from trips t join users u on t.driver_id = u.id
+           where u.service_no in (${ids}))`,
+        `delete from checkpoints where trip_id in (
+           select t.id from trips t join users u on t.driver_id = u.id
+           where u.service_no in (${ids}))`,
+        `delete from alerts where driver_id in (select id from users where service_no in (${ids}))
+           or trip_id in (
+             select t.id from trips t join users u on t.driver_id = u.id
+             where u.service_no in (${ids}))`,
+        `delete from trips where driver_id in (select id from users where service_no in (${ids}))`,
+        `delete from users where service_no in (${ids})`,
+        `update vehicles set status = 'available'`,
+      ];
+      for (const stmt of demoCleanup) {
+        await pool.query(stmt, DEMO_SERVICE_NOS);
+      }
+    }
+
     for (const stmt of SEED) await pool.query(stmt);
 
     const u = await pool.query(`select count(*)::int as c from users`);

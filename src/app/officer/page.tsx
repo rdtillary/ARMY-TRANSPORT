@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
+import AdminPanel from "@/components/AdminPanel";
 import { getSession, timeAgo, type Session } from "@/lib/session";
 import { BASE_POS } from "@/lib/simulate";
 
@@ -99,7 +100,7 @@ export default function OfficerPage() {
 
   return (
     <div className="min-h-screen bg-[#121810] text-[#eee8d0]">
-      <TopBar role="OFFICER — COMMAND" name={session.name} unit={session.unit} />
+      <TopBar role="ADMIN — CENTRAL CONTROL ROOM" name={session.name} unit={session.unit} />
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-5">
         {/* Stat cards */}
@@ -242,6 +243,8 @@ export default function OfficerPage() {
             </div>
           </div>
         </div>
+
+        <AdminPanel />
       </main>
     </div>
   );

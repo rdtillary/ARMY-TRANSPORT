@@ -1,15 +1,15 @@
 /* MCTE Transport — offline-capable service worker.
    Network-first for pages/APIs (live data), cache-first for static assets,
    branded offline page when the network is down. */
-const CACHE = "mcte-transport-v4";
+const CACHE = "mcte-transport-v5";
 const SHELL = [
   "/",
   "/offline.html",
   "/manifest.webmanifest",
   "/mcte-logo.png",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
 ];
 
 self.addEventListener("install", (event) => {

@@ -13,8 +13,11 @@ export const metadata: Metadata = {
     title: "Army Transport CMS",
   },
   icons: {
-    icon: "/icons/icon-512.png",
-    apple: "/icons/icon-512.png",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icon-192.png",
   },
 };
 

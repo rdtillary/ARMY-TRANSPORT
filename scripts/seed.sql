@@ -1,13 +1,31 @@
--- Army Transport CMS — demo seed data
+-- MCTE Transport — seed data
 -- Apply with:  psql "$DATABASE_URL" -f scripts/seed.sql
+-- The ONLY built-in login is the central control room administrator:
+--   id = ADMIN   password = admin
+-- All JCO and Driver accounts are created from the Admin terminal
+-- (Personnel & Fleet Administration panel).
 
 INSERT INTO users (name, role, service_no, unit, password) VALUES
-  ('Col. A. Verma',   'officer', 'OFC-1001', 'HQ 7th Armoured', 'army123'),
-  ('WO R. Iyer',      'jco',     'JCO-2002', '7th Armoured',    'army123'),
-  ('Sgt D. Rathore',  'driver',  'DRV-3003', '7th Armoured',    'army123'),
-  ('Cpl K. Nair',     'driver',  'DRV-3004', '12th Mechanised', 'army123')
-ON CONFLICT (service_no) DO NOTHING;
+  ('Control Room Admin', 'officer', 'ADMIN', 'Central Control Room', 'admin')
+ON CONFLICT (service_no) DO UPDATE
+  SET password = EXCLUDED.password, role = 'officer', unit = 'Central Control Room';
 
+-- Remove any legacy demo accounts if this script is re-run.
+DELETE FROM positions WHERE trip_id IN (
+  SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
+  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+DELETE FROM checkpoints WHERE trip_id IN (
+  SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
+  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+DELETE FROM alerts WHERE trip_id IN (
+  SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
+  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'))
+   OR driver_id IN (SELECT id FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+DELETE FROM trips WHERE driver_id IN (
+  SELECT id FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+DELETE FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004');
+
+-- Starting fleet register (editable/deletable from the Admin terminal).
 INSERT INTO vehicles (reg_no, type, unit, fuel_pct, mileage, maintenance_due, status) VALUES
   ('0012 AB 3456', 'Scout Car (Mahindra)', '7th Armoured',    82, 12450, '2026-03-15', 'available'),
   ('0045 KJ 2231', 'Truck 5T (Tata)',      '7th Armoured',    67, 48210, '2026-02-28', 'available'),

@@ -22,7 +22,8 @@ Total time: ~20 minutes. No coding required.
    - `.next`
    (Right-click → Delete. Keep everything else, including `android/`,
    `public/`, `src/`, `scripts/`, `.github/`, `capacitor.config.ts`,
-   `package.json`, `package-lock.json`.)
+   `package.json`. `package-lock.json` is optional — `npm install`
+   regenerates it.)
 
 ## Step 1 — Save the code permanently (GitHub)
 
@@ -82,8 +83,9 @@ endpoint disappears.)
 
 ## Step 5 — Use your permanent app
 
-1. Open your permanent URL → log in (`OFC-1001` / `JCO-2002` /
-   `DRV-3003`, all password `army123`) — **one time only per device**.
+1. Open your permanent URL → the only built-in login is the Admin terminal:
+   ID **admin**, password **admin**. Create JCO/Driver accounts from the
+   Admin panel (see `ADMIN.md`) — log in once per device.
 2. **Phone PWA:** open the permanent URL in Chrome on your phone →
    ⋮ → *Add to Home screen* → it installs forever, pointing at this URL.
 3. **APK:** set `capacitor.config.ts` → `server.url` to your permanent URL,
@@ -108,7 +110,7 @@ endpoint disappears.)
 | Symptom | Fix |
 |---|---|
 | Deploy fails: "Could not find a production build" | Build Command must be `npm install && node scripts/gen-icons.mjs && npm run build` |
-| Deploy fails in "build" stage | Make sure `package-lock.json` was uploaded; check Build Command above |
+| Deploy fails in "build" stage | Make sure the current `package.json` (with the `sharp`, `leaflet` and `@capacitor/*` entries) was uploaded; check the Build Command above |
 | App loads but login fails | `DATABASE_URL` env var is wrong/missing, or you never visited `/api/setup` |
 | `/api/setup` returns an error JSON | It prints the DB error — almost always the URL. Recopy it exactly, including `?sslmode=require` |
 | First page very slow | Free tier waking up from sleep — refresh once |

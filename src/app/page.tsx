@@ -1,16 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Truck, Star, ChevronsUp, Lock, User, AlertCircle } from "lucide-react";
+import { Truck, ShieldCheck, ChevronsUp, Lock, User, AlertCircle } from "lucide-react";
 import { saveSession, getSession, type Session } from "@/lib/session";
 import McteLogo from "@/components/McteLogo";
 
 type Role = "officer" | "jco" | "driver";
 
-const ROLES: { id: Role; label: string; sub: string; icon: any; demo: string; demoPass: string }[] = [
-  { id: "officer", label: "Officer", sub: "Command & Control", icon: Star, demo: "OFC-1001", demoPass: "army123" },
-  { id: "jco", label: "JCO", sub: "Monitoring & Data", icon: ChevronsUp, demo: "JCO-2002", demoPass: "army123" },
-  { id: "driver", label: "Driver", sub: "Trip & GPS Tracking", icon: Truck, demo: "DRV-3003", demoPass: "army123" },
+const ROLES: { id: Role; label: string; sub: string; icon: any }[] = [
+  { id: "officer", label: "Admin", sub: "Central Control Room", icon: ShieldCheck },
+  { id: "jco", label: "JCO", sub: "Monitoring & Data", icon: ChevronsUp },
+  { id: "driver", label: "Driver", sub: "Trip & GPS Tracking", icon: Truck },
 ];
 
 export default function LoginPage() {
@@ -74,12 +74,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#141b10] via-[#222e18] to-[#141b10] text-[#f0e6c8] flex flex-col items-center justify-center px-5 py-10 relative overflow-hidden">
       <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(circle_at_50%_28%,#b08d3c_0%,transparent_65%)]" />
-      <div className="absolute top-6 left-6 text-[#8b6f2e]/25 pointer-events-none">
-        <Shield size={110} strokeWidth={1} />
-      </div>
-      <div className="absolute bottom-8 right-6 text-[#8b6f2e]/25 rotate-12 pointer-events-none">
-        <Shield size={90} strokeWidth={1} />
-      </div>
 
       {!role ? (
         <div className="relative z-10 w-full max-w-3xl">
@@ -161,7 +155,7 @@ export default function LoginPage() {
                   value={serviceNo}
                   onChange={(e) => setServiceNo(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && login()}
-                  placeholder={info?.demo}
+                  placeholder={info?.id === "officer" ? "admin" : "Your assigned service number"}
                   className="w-full bg-[#141c0e] border border-[#8b6f2e]/30 rounded-xl px-4 py-3 text-[#eee8d0] placeholder:text-[#5d573f] focus:outline-none focus:border-[#c0a86c]"
                 />
               </div>
@@ -193,10 +187,9 @@ export default function LoginPage() {
                 {busy ? "VERIFYING…" : "LOG IN"}
               </button>
 
-              <div className="text-center text-[11px] text-[#8b8064] bg-[#141c0e]/60 border border-[#8b6f2e]/15 rounded-xl px-3 py-2">
-                Demo: <span className="font-bold text-[#d4c48a]">{info?.demo}</span> /{" "}
-                <span className="font-bold text-[#d4c48a]">{info?.demoPass}</span>
-              </div>
+              <p className="text-center text-[10px] text-[#6d6349] tracking-wider">
+                Credentials are issued by the central control room administrator.
+              </p>
             </div>
           </div>
         </div>
