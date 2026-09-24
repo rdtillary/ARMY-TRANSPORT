@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Square, Siren, LogOut, ChevronDown, Radio, Satellite, MapPin } from "lucide-react";
+import { Play, Square, Siren, LogOut, ChevronDown, Radio, Satellite, MapPin, X } from "lucide-react";
 import MapView from "@/components/MapView";
 import McteLogo from "@/components/McteLogo";
 import { getSession, clearSession, type Session } from "@/lib/session";
@@ -24,6 +24,7 @@ export default function DriverPage() {
   const [starting, setStarting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState<string | null>(null);
+  const [notes, setNotes] = useState<any[]>([]);
   const simRef = useRef<(() => GeoPos) | null>(null);
 
   const flash = (m: string) => {
@@ -79,6 +80,28 @@ export default function DriverPage() {
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [session]);
+
+  /* MT Park / contingency notifications addressed to this driver */
+  useEffect(() => {
+    if (!session) return;
+    const load = () =>
+      fetch(`/api/notifications?userId=${session.id}&role=driver`)
+        .then((r) => r.json())
+        .then((d) => setNotes((d.notifications || []).filter((n: any) => !n.read)))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 8000); // repeats (e.g. stopped-while-OUT) arrive every 1 min
+    return () => clearInterval(t);
+  }, [session]);
+
+  const dismissNote = async (id: number) => {
+    setNotes((ns) => ns.filter((n) => n.id !== id));
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read", ids: [id] }),
+    });
+  };
 
   /* GPS / simulation tracking loop */
   useEffect(() => {
@@ -189,10 +212,35 @@ export default function DriverPage() {
   const available = vehicles.filter((v) => v.status === "available");
   const speed = pos?.speed != null ? Math.round(pos.speed) : null;
 
+  const noteBanners = (
+    <div className="fixed top-16 inset-x-0 z-[960] flex flex-col items-center gap-2 px-4 pointer-events-none">
+      {notes.slice(0, 2).map((n) => (
+        <div
+          key={n.id}
+          className={`pointer-events-auto w-full max-w-md flex items-start gap-2.5 rounded-xl border px-4 py-3 shadow-2xl ${
+            n.kind === "alarm"
+              ? "bg-rose-950/95 border-rose-500/60 text-rose-100"
+              : "bg-[#2b2410]/95 border-[#c0a86c]/50 text-[#e8d9a8]"
+          }`}
+        >
+          {n.kind === "alarm" ? <Siren size={17} className="mt-0.5 shrink-0 animate-pulse" /> : <Radio size={17} className="mt-0.5 shrink-0" />}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-extrabold tracking-wide">{n.title}</div>
+            <div className="text-xs mt-0.5 leading-snug">{n.message}</div>
+          </div>
+          <button onClick={() => dismissNote(n.id)} className="text-current/70 hover:text-white shrink-0" aria-label="Dismiss">
+            <X size={15} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
   /* ================= PRE-TRIP: dropdown + big circular START ================= */
   if (!trip) {
     return (
       <div className="min-h-dvh bg-[#121810] text-[#eee8d0] flex flex-col relative overflow-hidden">
+        {noteBanners}
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_50%_68%,#b08d3c_0%,transparent_60%)] pointer-events-none" />
 
         {broadcast && (
@@ -300,6 +348,7 @@ export default function DriverPage() {
   /* ================= ACTIVE TRIP: map + STOP + SOS only ================= */
   return (
     <div className="fixed inset-0 z-0 flex flex-col bg-[#121810] text-[#eee8d0]">
+      {noteBanners}
       <div className="relative flex-1 min-h-0">
         <MapView
           className="h-full"

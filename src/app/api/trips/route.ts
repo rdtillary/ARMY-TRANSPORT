@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trips, vehicles, users, positions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { handleTripStarted } from "@/lib/ops";
 
 /** GET /api/trips?userId=.. → the driver's currently active trip (if any). */
 export async function GET(req: Request) {
@@ -69,6 +70,9 @@ export async function POST(req: Request) {
     .update(vehicles)
     .set({ status: "active" })
     .where(eq(vehicles.id, vehicleId));
+
+  // MT Park rule engine: clears "tracking OFF while OUT" alarms, arms others.
+  await handleTripStarted({ tripId: trip.id, vehicleId, driverId });
 
   return NextResponse.json({
     trip: {

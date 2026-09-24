@@ -27,6 +27,47 @@ export const vehicles = pgTable("vehicles", {
   mileage: integer("mileage").notNull().default(0),
   maintenanceDue: date("maintenance_due"),
   status: text("status").notNull().default("available"), // available | active | maintenance
+  // MT Park gate state
+  parkStatus: text("park_status").notNull().default("in"), // in | out
+  pendingStopAt: timestamp("pending_stop_at"), // scan-IN with tracking on → auto-stop deadline
+});
+
+export const gateEvents = pgTable("gate_events", {
+  id: serial("id").primaryKey(),
+  vehicleId: integer("vehicle_id")
+    .notNull()
+    .references(() => vehicles.id),
+  direction: text("direction").notNull(), // in | out
+  photoUrl: text("photo_url").notNull(),
+  plateText: text("plate_text").notNull(), // ANPR reading
+  confidence: doublePrecision("confidence").notNull().default(98),
+  driverId: integer("driver_id").references(() => users.id),
+  ts: timestamp("ts").notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  target: text("target").notNull(), // admin | jco | driver:<id> | all
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  kind: text("kind").notNull().default("info"), // info | alarm
+  vehicleId: integer("vehicle_id"),
+  tripId: integer("trip_id"),
+  ts: timestamp("ts").notNull().defaultNow(),
+  read: boolean("read").notNull().default(false),
+});
+
+export const incidents = pgTable("incidents", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // tracking_off_out | tracking_on_in | stopped_out
+  message: text("message").notNull(),
+  vehicleId: integer("vehicle_id").notNull(),
+  tripId: integer("trip_id"),
+  driverId: integer("driver_id"),
+  ts: timestamp("ts").notNull().defaultNow(),
+  lastRepeatAt: timestamp("last_repeat_at"),
+  resolved: boolean("resolved").notNull().default(false),
+  resolvedAt: timestamp("resolved_at"),
 });
 
 export const trips = pgTable("trips", {

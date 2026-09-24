@@ -38,6 +38,9 @@ export async function POST(req: Request) {
       .set({ status: "completed", endedAt: new Date() })
       .where(eq(trips.id, tripId));
     await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, trip.vehicleId));
+    // MT Park rule engine: rule 3 (stopped while OUT) is raised here.
+    const { handleTripStopped } = await import("@/lib/ops");
+    await handleTripStopped({ tripId, vehicleId: trip.vehicleId, driverId: trip.driverId });
     return NextResponse.json({ ok: true });
   }
 

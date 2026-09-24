@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
+import JcoMtPanel from "@/components/JcoMtPanel";
 import { getSession, timeAgo, type Session } from "@/lib/session";
 import { BASE_POS } from "@/lib/simulate";
 
@@ -140,6 +141,9 @@ export default function JcoPage() {
           <Card icon={Radar} label="Fleet size" value={String(live?.totalVehicles ?? 0)} sub="registered vehicles" tone="text-[#d4c48a]" />
           <Card icon={Gauge} label="Open alerts" value={String(live?.alerts?.length ?? 0)} sub="awaiting officer" tone={(live?.alerts?.length ?? 0) ? "text-amber-300" : "text-[#8b8064]"} />
         </div>
+
+        {/* MT Park gate status + contingencies */}
+        <JcoMtPanel />
 
         {/* Live map */}
         <div className="space-y-2">

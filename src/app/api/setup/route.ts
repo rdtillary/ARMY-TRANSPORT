@@ -76,6 +76,42 @@ const DDL = [
     message text not null,
     ts timestamptz not null default now()
   )`,
+  // --- MT Park operations ---
+  `alter table vehicles add column if not exists park_status text not null default 'in'`,
+  `alter table vehicles add column if not exists pending_stop_at timestamptz`,
+  `create table if not exists gate_events (
+    id serial primary key,
+    vehicle_id integer not null references vehicles(id),
+    direction text not null,
+    photo_url text not null,
+    plate_text text not null,
+    confidence double precision not null default 98,
+    driver_id integer references users(id),
+    ts timestamptz not null default now()
+  )`,
+  `create table if not exists notifications (
+    id serial primary key,
+    target text not null,
+    title text not null,
+    message text not null,
+    kind text not null default 'info',
+    vehicle_id integer,
+    trip_id integer,
+    ts timestamptz not null default now(),
+    read boolean not null default false
+  )`,
+  `create table if not exists incidents (
+    id serial primary key,
+    kind text not null,
+    message text not null,
+    vehicle_id integer not null references vehicles(id),
+    trip_id integer,
+    driver_id integer references users(id),
+    ts timestamptz not null default now(),
+    last_repeat_at timestamptz,
+    resolved boolean not null default false,
+    resolved_at timestamptz
+  )`,
 ];
 
 // One-time migration: the only built-in account is the central control room
@@ -103,27 +139,27 @@ export async function GET() {
     for (const stmt of DDL) await pool.query(stmt);
 
     // One-time removal of old demo accounts (only runs until ADMIN exists).
+    // Constants are a fixed allow-list, so inline literals are safe here.
     const adminCheck = await pool.query(`select 1 from users where service_no = 'ADMIN' limit 1`);
     if (adminCheck.rowCount === 0) {
-      const ids = DEMO_SERVICE_NOS.map((_, i) => `$${i + 1}`).join(",");
-      const demoCleanup = [
+      const inList = DEMO_SERVICE_NOS.map((s) => `'${s.replace(/'/g, "''")}'`).join(",");
+      await pool.query(
         `delete from positions where trip_id in (
            select t.id from trips t join users u on t.driver_id = u.id
-           where u.service_no in (${ids}))`,
-        `delete from checkpoints where trip_id in (
+           where u.service_no in (${inList}));
+         delete from checkpoints where trip_id in (
            select t.id from trips t join users u on t.driver_id = u.id
-           where u.service_no in (${ids}))`,
-        `delete from alerts where driver_id in (select id from users where service_no in (${ids}))
-           or trip_id in (
-             select t.id from trips t join users u on t.driver_id = u.id
-             where u.service_no in (${ids}))`,
-        `delete from trips where driver_id in (select id from users where service_no in (${ids}))`,
-        `delete from users where service_no in (${ids})`,
-        `update vehicles set status = 'available'`,
-      ];
-      for (const stmt of demoCleanup) {
-        await pool.query(stmt, DEMO_SERVICE_NOS);
-      }
+           where u.service_no in (${inList}));
+         delete from alerts
+           where driver_id in (select id from users where service_no in (${inList}))
+              or trip_id in (
+                select t.id from trips t join users u on t.driver_id = u.id
+                where u.service_no in (${inList}));
+         delete from trips where driver_id in
+           (select id from users where service_no in (${inList}));
+         delete from users where service_no in (${inList});
+         update vehicles set status = 'available';`
+      );
     }
 
     for (const stmt of SEED) await pool.query(stmt);

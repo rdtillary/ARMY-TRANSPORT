@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
+import type { Map as LeafletMap, Marker as LeafletMarker, Polyline as LeafletPolyline } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 export type MapMarker = {
@@ -44,17 +44,19 @@ function markerHtml(m: MapMarker) {
 }
 
 type Engine =
-  | { kind: "google"; gmaps: any; map: any; markers: Map<string, any> }
-  | { kind: "leaflet"; map: LeafletMap; L: any; markers: Map<string, LeafletMarker> };
+  | { kind: "google"; gmaps: any; map: any; markers: Map<string, any>; line: any }
+  | { kind: "leaflet"; map: LeafletMap; L: any; markers: Map<string, LeafletMarker>; line: LeafletPolyline | null };
 
 export default function MapView({
   markers = [],
+  path = [],
   center = [28.645, 77.225],
   zoom = 13,
   className = "h-[420px]",
   followId = null,
 }: {
   markers?: MapMarker[];
+  path?: [number, number][];
   center?: [number, number];
   zoom?: number;
   className?: string;
@@ -89,7 +91,7 @@ export default function MapView({
           maxZoom: 19,
           attribution: "&copy; OpenStreetMap contributors",
         }).addTo(map);
-        done({ kind: "leaflet", map, L, markers: new Map() });
+        done({ kind: "leaflet", map, L, markers: new Map(), line: null });
       } catch {
         if (!cancelled) setError("Map failed to initialize");
       }
@@ -108,7 +110,7 @@ export default function MapView({
           clickableIcons: false,
           backgroundColor: "#0d120b",
         });
-        done({ kind: "google", gmaps, map, markers: new Map() });
+        done({ kind: "google", gmaps, map, markers: new Map(), line: null });
       } catch {
         if (!cancelled)
           setError("Google Maps unavailable — check NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in .env");
@@ -182,6 +184,45 @@ export default function MapView({
       }
     }
   }, [markers, ready, followId]);
+
+  /* Draw the trip route polyline (archive view). */
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng) return;
+    if (path.length < 2) {
+      if (eng.kind === "google" && eng.line) {
+        eng.line.setMap(null);
+        eng.line = null;
+      } else if (eng.kind === "leaflet" && eng.line) {
+        eng.line.remove();
+        eng.line = null;
+      }
+      return;
+    }
+    if (eng.kind === "google") {
+      if (eng.line) eng.line.setMap(null);
+      eng.line = new eng.gmaps.Polyline({
+        path: path.map(([lat, lng]) => ({ lat, lng })),
+        geodesic: true,
+        strokeColor: "#d4a017",
+        strokeOpacity: 0.95,
+        strokeWeight: 4,
+      });
+      eng.line.setMap(eng.map);
+      const bounds = new eng.gmaps.LatLngBounds();
+      path.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+      eng.map.fitBounds(bounds, 60);
+    } else {
+      if (eng.line) eng.line.remove();
+      const line = eng.L.polyline(path, {
+        color: "#d4a017",
+        weight: 4,
+        opacity: 0.95,
+      }).addTo(eng.map) as LeafletPolyline;
+      eng.line = line;
+      eng.map.fitBounds(line.getBounds(), { padding: [50, 50] });
+    }
+  }, [path, ready]);
 
   return (
     <div className={`relative ${className} rounded-2xl overflow-hidden border border-[#8b6f2e]/25 bg-[#0d120b]`}>
