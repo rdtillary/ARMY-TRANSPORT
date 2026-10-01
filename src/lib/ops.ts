@@ -97,7 +97,11 @@ async function lastDriverForVehicle(vehicleId: number) {
 
 /* ------------------------------------------------------------------ GATE */
 
-export async function gateScan(input: { vehicleId: number; direction: "in" | "out" }) {
+export async function gateScan(input: {
+  vehicleId: number;
+  direction: "in" | "out";
+  media?: { photoUrl: string; plateText?: string; confidence?: number };
+}) {
   const [v] = await db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId));
   if (!v) throw new Error("Vehicle not found");
   if (v.status === "maintenance") throw new Error(`${v.regNo} is under maintenance`);
@@ -108,15 +112,19 @@ export async function gateScan(input: { vehicleId: number; direction: "in" | "ou
   const active = await activeTripForVehicle(input.vehicleId);
   const driverId = active?.driverId ?? (await lastDriverForVehicle(input.vehicleId))?.driverId ?? null;
   const photoCount = await db.$count(gateEvents);
-  const confidence = +(94 + Math.random() * 5).toFixed(1);
+  const confidence =
+    input.media?.confidence != null
+      ? input.media.confidence
+      : +(94 + Math.random() * 5).toFixed(1);
 
   const [evt] = await db
     .insert(gateEvents)
     .values({
       vehicleId: v.id,
       direction: input.direction,
-      photoUrl: GATE_PHOTOS[photoCount % GATE_PHOTOS.length],
-      plateText: v.regNo,
+      // Real ANPR capture (data URL) when provided, otherwise the demo photo set.
+      photoUrl: input.media?.photoUrl || GATE_PHOTOS[photoCount % GATE_PHOTOS.length],
+      plateText: input.media?.plateText || v.regNo,
       confidence,
       driverId,
     })

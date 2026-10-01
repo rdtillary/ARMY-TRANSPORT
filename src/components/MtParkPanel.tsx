@@ -11,6 +11,7 @@ import {
   Truck,
 } from "lucide-react";
 import { timeAgo, fmtClock } from "@/lib/session";
+import AnprGate from "@/components/AnprGate";
 
 type OpsVehicle = {
   id: number;
@@ -109,7 +110,9 @@ export default function MtParkPanel() {
         <h2 className="text-lg font-extrabold flex items-center gap-2">
           <Camera size={19} className="text-[#d4c48a]" /> MT PARK OPERATIONS — MIL OPERATOR
         </h2>
-        <button
+        <div className="flex items-center gap-2">
+          <AnprGate onScanned={load} />
+          <button
           onClick={() => setAuto((a) => !a)}
           className={`flex items-center gap-2 text-xs font-extrabold px-3.5 py-2 rounded-lg border transition ${
             auto
@@ -117,9 +120,10 @@ export default function MtParkPanel() {
               : "bg-[#2a361d] border-[#8b6f2e]/40 text-[#d4c48a] hover:bg-[#33421f]"
           }`}
         >
-          <RefreshCw size={13} className={auto ? "animate-spin" : ""} />
-          {auto ? "AUTO CAMERA SCAN: ON" : "AUTO CAMERA SCAN: OFF"}
-        </button>
+            <RefreshCw size={13} className={auto ? "animate-spin" : ""} />
+            {auto ? "AUTO CAMERA SCAN: ON" : "AUTO CAMERA SCAN: OFF"}
+          </button>
+        </div>
       </div>
 
       {/* Summary */}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trips, positions } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 /** POST /api/trips/track {tripId, lat, lng, speed, heading, accuracy} */
 export async function POST(req: Request) {
@@ -28,8 +28,8 @@ export async function POST(req: Request) {
     accuracy: body.accuracy != null && isFinite(Number(body.accuracy)) ? Number(body.accuracy) : null,
   });
 
-  // Keep only the last 6 hours of raw GPS points.
-  await db.delete(positions).where(sql`ts < now() - interval '6 hours'`);
+  // GPS points are retained permanently so the Trip Archive can replay
+  // complete routes. (Notifications table is pruned separately in ops.ts.)
 
   return NextResponse.json({ ok: true });
 }
