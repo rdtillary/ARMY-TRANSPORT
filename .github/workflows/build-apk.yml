@@ -1,9 +1,5 @@
 name: Build Android APK
 
-# Fully self-contained APK builder. The only thing it needs from your repo is
-# public/mcte-logo.png. Everything else (config, android project, icon script)
-# is generated here so partial/failed uploads cannot break the build.
-
 on:
   workflow_dispatch:
     inputs:
@@ -26,11 +22,11 @@ jobs:
         with:
           node-version: "22"
 
-     - name: Setup JDK 21
-  uses: actions/setup-java@v4
-  with:
-    distribution: temurin
-    java-version: "21"
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
 
       - name: Show uploaded project files
         run: |
@@ -53,7 +49,7 @@ jobs:
 
       - name: Write Capacitor config and web shell
         run: |
-          mkdir -p capacitor-web scripts public
+          mkdir -p capacitor-web scripts public/icons
           cat > capacitor-web/index.html <<'HTMLEOF'
           <!doctype html><html lang="en"><head><meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -107,7 +103,7 @@ jobs:
           import { mkdirSync, writeFileSync } from "fs";
 
           const LOGO = "public/mcte-logo.png";
-          const BG = { r: 217, g: 0, b: 0, alpha: 1 }; // #D90000 insignia red
+          const BG = { r: 217, g: 0, b: 0, alpha: 1 };
 
           async function plate(size, ratio) {
             const logo = await sharp(LOGO)
@@ -126,6 +122,8 @@ jobs:
 
           const valuesDir = "android/app/src/main/res/values";
           mkdirSync(valuesDir, { recursive: true });
+          mkdirSync("public/icons", { recursive: true });
+
           writeFileSync(`${valuesDir}/ic_launcher_background.xml`,
             '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#D90000</color>\n</resources>\n');
 
