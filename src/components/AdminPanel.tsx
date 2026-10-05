@@ -21,6 +21,7 @@ export default function AdminPanel() {
 
   const [p, setP] = useState({ name: "", role: "driver", serviceNo: "", unit: "", password: "" });
   const [pBulk, setPBulk] = useState("");
+  // Fuel is kept in state as a silent default so the database doesn't throw a missing column error
   const [v, setV] = useState({ regNo: "", type: "", unit: "", fuelPct: 100 });
   const [vBulk, setVBulk] = useState("");
 
@@ -241,15 +242,9 @@ export default function AdminPanel() {
                   <input className={input} value={v.type} onChange={(e) => setV({ ...v, type: e.target.value })} placeholder="Truck 5T (Tata)" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className={label}>Unit / formation</label>
-                  <input className={input} value={v.unit} onChange={(e) => setV({ ...v, unit: e.target.value })} placeholder="7th Armoured" />
-                </div>
-                <div>
-                  <label className={label}>Fuel % (default 100)</label>
-                  <input type="number" min={0} max={100} className={input} value={v.fuelPct} onChange={(e) => setV({ ...v, fuelPct: Number(e.target.value) })} />
-                </div>
+              <div>
+                <label className={label}>Unit / formation</label>
+                <input className={input} value={v.unit} onChange={(e) => setV({ ...v, unit: e.target.value })} placeholder="7th Armoured" />
               </div>
               <button onClick={addVehicle} disabled={!v.regNo} className="w-full py-2.5 bg-[#8b6f2e] text-[#1a1508] font-extrabold rounded-lg text-xs tracking-widest hover:brightness-110 disabled:opacity-35">
                 ADD VEHICLE
@@ -281,7 +276,7 @@ export default function AdminPanel() {
                   <div className="min-w-0">
                     <div className="text-sm font-bold truncate">{x.regNo}</div>
                     <div className="text-[11px] text-[#a89a76] truncate">
-                      {x.type} · {x.unit} · ⛽ {x.fuelPct}%
+                      {x.type} · {x.unit}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
