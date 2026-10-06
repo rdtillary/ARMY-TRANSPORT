@@ -6,7 +6,6 @@ import {
   Radar,
   ArrowUpRight,
   Truck,
-  Fuel,
   FileText,
   Copy,
   Check,
@@ -227,19 +226,7 @@ export default function JcoPage() {
                   <div className="text-[11px] text-[#a89a76] mt-0.5">
                     {v.type} • {v.unit}
                   </div>
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="flex items-center gap-1 text-[10px] text-[#a89a76] shrink-0">
-                      <Fuel size={11} />
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-[#0d120b] overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${v.fuelPct > 30 ? "bg-emerald-500" : "bg-rose-500"}`}
-                        style={{ width: `${v.fuelPct}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-bold text-[#d4c48a] w-8 text-right">{v.fuelPct}%</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-[#8b8064] mt-1.5">
+                  <div className="flex justify-between text-[10px] text-[#8b8064] mt-2">
                     <span>{v.mileage.toLocaleString()} km</span>
                     <span>service due: {v.maintenanceDue || "n/a"}</span>
                   </div>
