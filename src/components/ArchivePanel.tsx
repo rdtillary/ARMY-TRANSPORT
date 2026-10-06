@@ -8,6 +8,7 @@ import {
   Clock,
   Gauge,
   Camera,
+  Trash2,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import { fmtClock } from "@/lib/session";
@@ -19,6 +20,7 @@ export default function ArchivePanel() {
   const [filter, setFilter] = useState<Filter>("all");
   const [detail, setDetail] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
 
   const load = async (f: Filter = filter) => {
     const d = await fetch(`/api/trips/archive?status=${f}`).then((r) => r.json());
@@ -32,6 +34,26 @@ export default function ArchivePanel() {
     const d = await fetch(`/api/trips/${tripId}`).then((r) => r.json());
     setDetail(d);
     setDetailLoading(false);
+  };
+
+  const deleteTrip = async (tripId: number) => {
+    if (!confirm("Are you sure you want to delete this trip record? This action cannot be undone.")) {
+      return;
+    }
+    setDeleting(tripId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
+      if (res.ok) {
+        // Reload archive after deletion
+        await load(filter);
+      } else {
+        alert("Failed to delete trip");
+      }
+    } catch (e) {
+      alert("Error deleting trip");
+    } finally {
+      setDeleting(null);
+    }
   };
 
   return (
@@ -82,7 +104,7 @@ export default function ArchivePanel() {
                   <th className="py-2 pr-3">Distance</th>
                   <th className="py-2 pr-3">GPS pts</th>
                   <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 text-right">Record</th>
+                  <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -99,12 +121,19 @@ export default function ArchivePanel() {
                         {r.status}
                       </span>
                     </td>
-                    <td className="py-2.5 text-right">
+                    <td className="py-2.5 text-right flex justify-end gap-2">
                       <button
                         onClick={() => openTrip(r.tripId)}
                         className="text-[10px] font-extrabold px-3 py-1.5 rounded-lg bg-[#2a361d] border border-[#8b6f2e]/40 text-[#d4c48a] hover:bg-[#33421f] inline-flex items-center gap-1"
                       >
-                        <Route size={11} /> VIEW MAP
+                        <Route size={11} /> VIEW
+                      </button>
+                      <button
+                        onClick={() => deleteTrip(r.tripId)}
+                        disabled={deleting === r.tripId}
+                        className="text-[10px] font-extrabold px-3 py-1.5 rounded-lg bg-rose-950/40 border border-rose-700/40 text-rose-300 hover:bg-rose-900/50 disabled:opacity-50 inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={11} /> DELETE
                       </button>
                     </td>
                   </tr>
