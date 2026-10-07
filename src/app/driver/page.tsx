@@ -32,6 +32,30 @@ export default function DriverPage() {
     setTimeout(() => setToast(null), 2200);
   };
 
+  const getCurrentPosition = (): Promise<GeoPos> =>
+    new Promise((resolve) => {
+      if (!("geolocation" in navigator)) {
+        resolve({ lat: BASE_POS[0], lng: BASE_POS[1] });
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            speed: position.coords.speed != null ? position.coords.speed * 3.6 : undefined,
+            heading: position.coords.heading ?? undefined,
+            accuracy: position.coords.accuracy,
+          });
+        },
+        () => {
+          resolve({ lat: BASE_POS[0], lng: BASE_POS[1] });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+    });
+
   /* Session guard — one-time login: the stored session survives app restarts. */
   useEffect(() => {
     const s = getSession();
@@ -158,14 +182,17 @@ export default function DriverPage() {
     if (!vehicleId || !session || starting || trip) return;
     setStarting(true);
     try {
+      const startPosition = await getCurrentPosition();
+      setPos(startPosition);
+
       const res = await fetch("/api/trips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           driverId: session.id,
           vehicleId: Number(vehicleId),
-          lat: BASE_POS[0],
-          lng: BASE_POS[1],
+          lat: startPosition.lat,
+          lng: startPosition.lng,
         }),
       });
       const d = await res.json();
@@ -352,7 +379,7 @@ export default function DriverPage() {
       <div className="relative flex-1 min-h-0">
         <MapView
           className="h-full"
-          center={BASE_POS}
+          center={pos ? [pos.lat, pos.lng] : BASE_POS}
           zoom={13}
           followId="me"
           markers={[
@@ -405,7 +432,8 @@ export default function DriverPage() {
       <div className="flex items-center justify-center gap-10 px-6 pt-3 pb-6 bg-gradient-to-t from-[#0c110a] via-[#0c110a]/70 to-transparent">
         <button
           onClick={stop}
-          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_45px_rgba(16,185,129,0.25)] active:scale-95 transition"
+          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_40px_rgba(34,197,94,0.3)] active:scale-95"
+          aria-label="Stop movement"
         >
           <Square size={32} fill="currentColor" />
           <span className="text-sm">STOP</span>
@@ -418,6 +446,7 @@ export default function DriverPage() {
               ? "bg-[#3a1518] border-rose-900 text-rose-300/70 cursor-default"
               : "bg-gradient-to-b from-rose-600 to-rose-800 border-rose-300/60 text-white shadow-[0_0_55px_rgba(244,63,94,0.45)]"
           }`}
+          aria-label="Send SOS"
         >
           <Siren size={32} className={sosSent ? "" : "animate-pulse"} />
           <span className="text-sm">{sosSent ? "SENT" : "SOS"}</span>
