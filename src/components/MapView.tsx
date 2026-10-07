@@ -50,7 +50,7 @@ type Engine =
 export default function MapView({
   markers = [],
   path = [],
-  center = [20.5937, 78.9629],
+  center = [28.645, 77.225],
   zoom = 13,
   className = "h-[420px]",
   followId = null,
@@ -66,19 +66,6 @@ export default function MapView({
   const engineRef = useRef<Engine | null>(null);
   const [ready, setReady] = useState(0);
   const [error, setError] = useState<string | null>(null);
-
-  const initialCenter: [number, number] = (() => {
-    const firstMarker = markers.find((m) => m.lat != null && m.lng != null);
-    if (firstMarker && firstMarker.lat != null && firstMarker.lng != null) {
-      return [firstMarker.lat, firstMarker.lng];
-    }
-
-    if (path.length > 0) {
-      return [path[0][0], path[0][1]];
-    }
-
-    return center;
-  })();
 
   /* Create the map once (client only — Leaflet is imported dynamically). */
   useEffect(() => {
@@ -99,7 +86,7 @@ export default function MapView({
         const mod = await import("leaflet");
         const L = mod.default;
         if (cancelled || !elRef.current) return;
-        const map = L.map(elRef.current, { center: [initialCenter[0], initialCenter[1]], zoom });
+        const map = L.map(elRef.current, { center: [center[0], center[1]], zoom });
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           attribution: "&copy; OpenStreetMap contributors",
@@ -115,7 +102,7 @@ export default function MapView({
         const gmaps = await loadGoogle();
         if (cancelled || !elRef.current) return;
         const map = new gmaps.Map(elRef.current, {
-          center: { lat: initialCenter[0], lng: initialCenter[1] },
+          center: { lat: center[0], lng: center[1] },
           zoom,
           mapTypeControl: false,
           streetViewControl: false,
@@ -140,20 +127,7 @@ export default function MapView({
       engineRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialCenter[0], initialCenter[1], zoom]);
-
-  useEffect(() => {
-    const eng = engineRef.current;
-    if (!eng || !ready) return;
-
-    if (eng.kind === "google") {
-      eng.map.panTo({ lat: initialCenter[0], lng: initialCenter[1] });
-    } else {
-      eng.map.setView([initialCenter[0], initialCenter[1]], Math.max(eng.map.getZoom(), 12), {
-        animate: true,
-      });
-    }
-  }, [initialCenter, ready]);
+  }, []);
 
   /* Keep markers in sync with incoming data. */
   useEffect(() => {
