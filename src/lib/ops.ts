@@ -97,30 +97,11 @@ async function lastDriverForVehicle(vehicleId: number) {
 
 /* ------------------------------------------------------------------ GATE */
 
-/**
- * GATE SCAN FUNCTIONALITY DISABLED
- * 
- * Gate scan and all MT Park location-based contingencies are disabled
- * until the MT Park location is provided. This prevents false alarms
- * from being generated in Admin and JCO terminals.
- * 
- * The following rules are temporarily deactivated:
- * - RULE 1: OUT but tracking is OFF
- * - RULE 2: Tracking ON but still inside MT park after 5 minutes
- * - RULE 3: STOP while still OUT
- * - RULE 4: IN with tracking still ON
- * 
- * Re-enable by uncommenting the gateScan function and evaluate() rule checks.
- */
-
 export async function gateScan(input: {
   vehicleId: number;
   direction: "in" | "out";
   media?: { photoUrl: string; plateText?: string; confidence?: number };
 }) {
-  // DISABLED: Gate scan functionality is temporarily disabled.
-  // Update the vehicle park status without triggering contingency rules.
-  
   const [v] = await db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId));
   if (!v) throw new Error("Vehicle not found");
   if (v.status === "maintenance") throw new Error(`${v.regNo} is under maintenance`);
@@ -128,19 +109,20 @@ export async function gateScan(input: {
     throw new Error(`${v.regNo} is already recorded ${input.direction === "in" ? "IN" : "OUT"}`);
   }
 
-  const driverId = (await lastDriverForVehicle(input.vehicleId))?.driverId ?? null;
+  const active = await activeTripForVehicle(input.vehicleId);
+  const driverId = active?.driverId ?? (await lastDriverForVehicle(input.vehicleId))?.driverId ?? null;
   const photoCount = await db.$count(gateEvents);
   const confidence =
     input.media?.confidence != null
       ? input.media.confidence
       : +(94 + Math.random() * 5).toFixed(1);
 
-  // Record the gate event (for logging only, no rules triggered)
   const [evt] = await db
     .insert(gateEvents)
     .values({
       vehicleId: v.id,
       direction: input.direction,
+      // Real ANPR capture (data URL) when provided, otherwise the demo photo set.
       photoUrl: input.media?.photoUrl || GATE_PHOTOS[photoCount % GATE_PHOTOS.length],
       plateText: input.media?.plateText || v.regNo,
       confidence,
@@ -148,14 +130,81 @@ export async function gateScan(input: {
     })
     .returning();
 
-  // Update park status only
   await db
     .update(vehicles)
     .set({
       parkStatus: input.direction,
+      // scanning IN frees any pending stop flag; scanning OUT clears it too
       pendingStopAt: null,
     })
     .where(eq(vehicles.id, v.id));
+
+  if (input.direction === "out") {
+    if (active) {
+      // Tracking already on — clear any "tracking on while in" incident.
+      await resolveOpen(v.id, ["tracking_on_in"]);
+      await notify(
+        [
+          "admin",
+          "jco",
+          ...(driverId ? ([`driver:${driverId}`] as Target[]) : []),
+        ],
+        {
+          title: "Vehicle OUT — tracking confirmed",
+          message: `${v.regNo} scanned OUT of MT park. Tracking is ON — stay on assigned route.`,
+          vehicleId: v.id,
+          tripId: active.tripId,
+        }
+      );
+    } else {
+      // RULE 1: OUT but tracking is OFF.
+      const [inc] = await db
+        .insert(incidents)
+        .values({
+          kind: "tracking_off_out",
+          message: `${v.regNo} scanned OUT of MT park but tracking is OFF — driver must start tracking now.`,
+          vehicleId: v.id,
+          driverId,
+          lastRepeatAt: new Date(),
+        })
+        .returning();
+      await notify(["admin", "jco"], {
+        title: "ALARM — tracking OFF",
+        message: inc.message,
+        kind: "alarm",
+        vehicleId: v.id,
+      });
+      if (driverId) {
+        await notify([`driver:${driverId}`], {
+          title: "TURN ON TRACKING",
+          message: `You are OUT of MT park in ${v.regNo}. Press the big START button to turn tracking ON immediately.`,
+          kind: "alarm",
+          vehicleId: v.id,
+        });
+      }
+    }
+  } else {
+    // Scanned IN → vehicle safely home. Resolve all open incidents.
+    await resolveOpen(v.id);
+    if (active) {
+      // RULE 4: back inside with tracking still on → notify, auto-stop in 2 min.
+      const stopAt = new Date(Date.now() + 2 * 60 * 1000);
+      await db.update(vehicles).set({ pendingStopAt: stopAt }).where(eq(vehicles.id, v.id));
+      await notify([`driver:${active.driverId}` as Target, "admin", "jco"], {
+        title: "TURN OFF TRACKING",
+        message: `${v.regNo} is inside MT park. Turn tracking OFF — it will be switched off automatically in 2 minutes.`,
+        kind: "alarm",
+        vehicleId: v.id,
+        tripId: active.tripId,
+      });
+    } else {
+      await notify(["admin", "jco"], {
+        title: "Vehicle IN",
+        message: `${v.regNo} scanned IN to MT park.`,
+        vehicleId: v.id,
+      });
+    }
+  }
 
   return { event: evt };
 }
@@ -164,8 +213,22 @@ export async function gateScan(input: {
 
 /** Called when a driver presses START. */
 export async function handleTripStarted(args: { tripId: number; vehicleId: number; driverId: number }) {
-  // DISABLED: Contingency checks disabled until MT Park location is provided
-  // No notifications or alarms will be generated
+  const [v] = await db.select().from(vehicles).where(eq(vehicles.id, args.vehicleId));
+  if (!v) return;
+  if (v.parkStatus === "out") {
+    // Correct behaviour: tracking started for a vehicle that is OUT.
+    const closed = await resolveOpen(args.vehicleId, ["tracking_off_out"]);
+    if (closed) {
+      await notify([`driver:${args.driverId}` as Target, "admin", "jco"], {
+        title: "Tracking confirmed",
+        message: `${v.regNo} tracking is now ON — thank you. Maintain tracking until you return to MT park.`,
+        kind: "info",
+        vehicleId: v.id,
+        tripId: args.tripId,
+      });
+    }
+  }
+  // If still IN, rule 2 is evaluated once the trip is 5 minutes old.
 }
 
 /** Called when a driver presses STOP (or tracking is completed). */
@@ -174,15 +237,37 @@ export async function handleTripStopped(args: { tripId: number; vehicleId: numbe
   if (!v) return;
   await db.update(vehicles).set({ pendingStopAt: null }).where(eq(vehicles.id, v.id));
   await resolveOpen(args.vehicleId, ["tracking_on_in"]);
-  
-  // DISABLED: Rule 3 (stopped while OUT) alarm generation is disabled
+
+  // RULE 3: tracking stopped while the vehicle is still OUT.
+  if (v.parkStatus === "out") {
+    const [inc] = await db
+      .insert(incidents)
+      .values({
+        kind: "stopped_out",
+        message: `${v.regNo} stopped tracking but is still OUT of MT park.`,
+        vehicleId: v.id,
+        tripId: args.tripId,
+        driverId: args.driverId,
+        lastRepeatAt: new Date(),
+      })
+      .returning();
+    const targets: Target[] = ["admin", "jco", `driver:${args.driverId}`];
+    await notify(targets, {
+      title: "ALARM — stopped while OUT",
+      message: inc.message,
+      kind: "alarm",
+      vehicleId: v.id,
+      tripId: args.tripId,
+    });
+  }
 }
 
 /* ----------------------------------------------------------- EVALUATION */
 
 /**
- * Evaluation rules are disabled.
- * Only auto-stop grace period (Rule 4) will execute.
+ * Runs every few seconds while a control-room terminal is open.
+ * Implements: rule 2 (tracking on while IN after 5 min), rule 3 repeats
+ * (every 60 s while OUT), rule 4 (auto-stop 2 min after scanning IN).
  */
 export async function evaluate() {
   const now = Date.now();
@@ -217,8 +302,77 @@ export async function evaluate() {
     });
   }
 
-  // DISABLED: Rule 2 (tracking on while IN after 5 min) - no alarms
-  // DISABLED: Rule 3 repeats (stopped while OUT) - no nudge notifications
+  // RULE 2: active trip, vehicle still IN, older than 5 minutes.
+  const activeTrips = await db
+    .select({
+      tripId: trips.id,
+      driverId: trips.driverId,
+      startedAt: trips.startedAt,
+      vehicleId: vehicles.id,
+      regNo: vehicles.regNo,
+      parkStatus: vehicles.parkStatus,
+    })
+    .from(trips)
+    .innerJoin(vehicles, eq(trips.vehicleId, vehicles.id))
+    .where(eq(trips.status, "active"));
+
+  for (const t of activeTrips) {
+    if (t.parkStatus === "in" && now - t.startedAt.getTime() >= 5 * 60 * 1000) {
+      const existing = await db
+        .select()
+        .from(incidents)
+        .where(
+          and(
+            eq(incidents.vehicleId, t.vehicleId),
+            eq(incidents.kind, "tracking_on_in"),
+            eq(incidents.resolved, false)
+          )
+        )
+        .limit(1);
+      if (existing.length === 0) {
+        const msg = `${t.regNo} started tracking over 5 minutes ago but is still inside MT park.`;
+        await db.insert(incidents).values({
+          kind: "tracking_on_in",
+          message: msg,
+          vehicleId: t.vehicleId,
+          tripId: t.tripId,
+          driverId: t.driverId,
+        });
+        await notify(["admin", "jco", `driver:${t.driverId}`] as Target[], {
+          title: "Tracking ON while inside park",
+          message: `${msg} If not moving out, turn tracking OFF.`,
+          kind: "alarm",
+          vehicleId: t.vehicleId,
+          tripId: t.tripId,
+        });
+      }
+    }
+  }
+
+  // RULE 3 repeats: unresolved "stopped while OUT" → nudge every 60 seconds.
+  const openStopped = await db
+    .select()
+    .from(incidents)
+    .where(and(eq(incidents.kind, "stopped_out"), eq(incidents.resolved, false)));
+
+  for (const inc of openStopped) {
+    const last = inc.lastRepeatAt ? inc.lastRepeatAt.getTime() : inc.ts.getTime();
+    if (now - last >= 60 * 1000) {
+      const targets: Target[] = ["admin", "jco"];
+      if (inc.driverId) targets.push(`driver:${inc.driverId}`);
+      await notify(targets, {
+        title: "REPEAT ALARM — still OUT",
+        message: `${inc.message} Restart tracking or return to MT park.`,
+        kind: "alarm",
+        vehicleId: inc.vehicleId,
+        tripId: inc.tripId ?? undefined,
+      });
+      await db
+        .update(incidents)
+        .set({ lastRepeatAt: new Date() })
+        .where(eq(incidents.id, inc.id));
+    }
+  }
 
   // Keep the notifications table from growing forever.
   await db.execute(sql`delete from notifications where ts < now() - interval '48 hours'`);
