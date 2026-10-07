@@ -1,44 +1,44 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { users, trips, vehicles } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 
 export async function GET() {
   try {
-    // 1. Fetch all registered drivers
     const allDrivers = await db
       .select({
         id: users.id,
         name: users.name,
-        serviceNumber: users.serviceNumber,
-        phone: users.phone,
+        serviceNo: users.serviceNo,
+        unit: users.unit,
       })
       .from(users)
-      .where(eq(users.role, 'driver'));
+      .where(eq(users.role, 'driver'))
+      .orderBy(asc(users.name));
 
-    // 2. Fetch all currently active trips with vehicle details
     const activeTrips = await db
       .select({
         driverId: trips.driverId,
         tripId: trips.id,
-        vehicleNumber: vehicles.registrationNumber,
-        vehicleModel: vehicles.model,
-        startTime: trips.startTime,
+        vehicleNumber: vehicles.regNo,
+        vehicleType: vehicles.type,
+        startedAt: trips.startedAt,
       })
       .from(trips)
       .leftJoin(vehicles, eq(trips.vehicleId, vehicles.id))
       .where(eq(trips.status, 'active'));
 
-    // 3. Map status to drivers
     const driversWithStatus = allDrivers.map((driver) => {
       const activeTrip = activeTrips.find((t) => t.driverId === driver.id);
+
       return {
         ...driver,
         status: activeTrip ? 'On Duty' : 'Idle',
         currentVehicle: activeTrip
-          ? `${activeTrip.vehicleNumber} (${activeTrip.vehicleModel || 'Vehicle'})`
+          ? `${activeTrip.vehicleNumber || 'Vehicle'}${activeTrip.vehicleType ? ` (${activeTrip.vehicleType})` : ''}`
           : null,
-        activeTripId: activeTrip?.tripId || null,
+        activeTripId: activeTrip?.tripId ?? null,
+        currentTripStartedAt: activeTrip?.startedAt ?? null,
       };
     });
 
