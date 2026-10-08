@@ -8,7 +8,7 @@ import { getSession, clearSession, type Session } from "@/lib/session";
 import { startGeoWatch, type GeoPos } from "@/lib/geo";
 import { createSimulator, BASE_POS } from "@/lib/simulate";
 
-type Vehicle = { id: number; regNo: string; type: string; unit: string; status: string };
+type Vehicle = { id: number; cNo?: number; regNo: string; type: string; unit: string; status: string };
 type Trip = { id: number; vehicleId: number; startedAt: string; regNo: string; type: string };
 
 export default function DriverPage() {
@@ -234,6 +234,8 @@ export default function DriverPage() {
     flash("SOS transmitted to command");
   };
 
+  const formatVehicleLabel = (v: Vehicle) => `${v.cNo ?? v.id} • ${v.regNo} • ${v.type}`;
+
   if (!session) return null;
 
   const available = vehicles.filter((v) => v.status === "available");
@@ -314,7 +316,7 @@ export default function DriverPage() {
                 <option value="">— SELECT VEHICLE —</option>
                 {available.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.regNo} • {v.type}
+                    {formatVehicleLabel(v)}
                   </option>
                 ))}
               </select>
@@ -364,7 +366,7 @@ export default function DriverPage() {
         </p>
 
         {toast && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[950] bg-[#20301a] border border-emerald-500/50 text-emerald-200 text-xs font-bold px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2 whitespace-nowrap">
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[950] bg-[#20301a] border border-emerald-500/50 text-emerald-200 text-xs font-bold px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2">
             <MapPin size={13} /> {toast}
           </div>
         )}
@@ -422,7 +424,7 @@ export default function DriverPage() {
         </div>
 
         {toast && (
-          <div className="absolute top-32 left-1/2 -translate-x-1/2 z-[670] bg-[#20301a] border border-emerald-500/50 text-emerald-200 text-xs font-bold px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2 whitespace-nowrap">
+          <div className="absolute top-32 left-1/2 -translate-x-1/2 z-[670] bg-[#20301a] border border-emerald-500/50 text-emerald-200 text-xs font-bold px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2">
             <MapPin size={13} /> {toast}
           </div>
         )}
@@ -432,7 +434,7 @@ export default function DriverPage() {
       <div className="flex items-center justify-center gap-10 px-6 pt-3 pb-6 bg-gradient-to-t from-[#0c110a] via-[#0c110a]/70 to-transparent">
         <button
           onClick={stop}
-          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_40px_rgba(34,197,94,0.3)] active:scale-95"
+          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-2xl transition active:scale-95"
           aria-label="Stop movement"
         >
           <Square size={32} fill="currentColor" />
