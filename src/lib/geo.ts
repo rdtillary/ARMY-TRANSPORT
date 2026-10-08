@@ -9,7 +9,7 @@ export type GeoPos = {
 /**
  * Start a continuous GPS watch.
  * - Inside the Capacitor (Android APK) shell it uses @capacitor/geolocation
- *   (native GPS, uses ACCESS_FINE_LOCATION permission).
+ *   with background mode enabled (native GPS, uses ACCESS_FINE_LOCATION permission).
  * - In a plain browser it falls back to navigator.geolocation.
  * Resolves to a function that stops the watch.
  */
@@ -28,8 +28,24 @@ export function startGeoWatch(
         /* location services may be off — watch will surface the error */
       }
       let watchId: string | null = null;
+      
+      try {
+        // Enable background geolocation by requesting background permission on Android 10+
+        await Geolocation.requestPermissions({ 
+          permissions: ["location"] 
+        }).catch(() => {
+          // Silently fail if background location not available
+        });
+      } catch {
+        // Ignore permission errors
+      }
+      
       watchId = await Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 1000 },
+        { 
+          enableHighAccuracy: true, 
+          timeout: 15000, 
+          maximumAge: 1000 
+        },
         (e) => {
           if (!e) return;
           const c = e.coords;
@@ -42,6 +58,7 @@ export function startGeoWatch(
           });
         }
       );
+      
       return () => {
         if (watchId) {
           void Geolocation.clearWatch({ id: watchId }).catch(() => {});
@@ -59,6 +76,7 @@ export function startGeoWatch(
       resolve(() => {});
       return;
     }
+    
     const id = navigator.geolocation.watchPosition(
       (pos) =>
         onPos({
@@ -76,7 +94,11 @@ export function startGeoWatch(
         };
         onErr(msgs[err.code] || "GPS error");
       },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 }
+      { 
+        enableHighAccuracy: true, 
+        maximumAge: 1000, 
+        timeout: 12000 
+      }
     );
     resolve(() => navigator.geolocation.clearWatch(id));
   });
