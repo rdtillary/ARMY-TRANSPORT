@@ -1,3 +1,6 @@
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+
 const DDL = [
   `create table if not exists users (
     id serial primary key,
@@ -98,3 +101,18 @@ const DDL = [
     resolved_at timestamptz
   )`
 ];
+
+/** POST /api/setup → initialize database schema. */
+export async function POST() {
+  try {
+    for (const sql of DDL) {
+      await db.execute(sql);
+    }
+    return NextResponse.json({ ok: true, message: "Database schema initialized" });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: String(err) },
+      { status: 500 }
+    );
+  }
+}
