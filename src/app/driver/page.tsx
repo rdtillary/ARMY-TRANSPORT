@@ -130,15 +130,47 @@ export default function DriverPage() {
   /* GPS / simulation tracking loop */
   useEffect(() => {
     if (!trip) return;
+
     let stop: (() => void) | null = null;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
-    setGpsError(null);
-    setPos(null);
+
+    const clearWatchdog = () => {
+      if (watchdog) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
+    };
+
+    const restartWatch = () => {
+      if (cancelled) return;
+      clearWatchdog();
+      stop?.();
+      stop = null;
+      setGpsError("GPS stalled — reconnecting…");
+      startGeoWatch(send, (msg) => {
+        if (!cancelled) setGpsError(msg);
+      }).then((s) => {
+        if (cancelled) s();
+        else {
+          stop = s;
+          resetWatchdog();
+        }
+      });
+    };
+
+    const resetWatchdog = () => {
+      clearWatchdog();
+      watchdog = setTimeout(() => {
+        if (!cancelled) restartWatch();
+      }, 20000);
+    };
 
     const send = async (p: GeoPos) => {
       if (cancelled) return;
       setPos(p);
+      resetWatchdog();
       try {
         await fetch("/api/trips/track", {
           method: "POST",
@@ -157,16 +189,21 @@ export default function DriverPage() {
         if (simRef.current) void send(simRef.current());
       }, 2500);
     } else {
+      setGpsError(null);
       startGeoWatch(send, (msg) => {
         if (!cancelled) setGpsError(msg);
       }).then((s) => {
         if (cancelled) s();
-        else stop = s;
+        else {
+          stop = s;
+          resetWatchdog();
+        }
       });
     }
 
     return () => {
       cancelled = true;
+      clearWatchdog();
       stop?.();
       if (timer) clearInterval(timer);
     };
@@ -432,7 +469,7 @@ export default function DriverPage() {
       <div className="flex items-center justify-center gap-10 px-6 pt-3 pb-6 bg-gradient-to-t from-[#0c110a] via-[#0c110a]/70 to-transparent">
         <button
           onClick={stop}
-          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-2xl transition active:scale-95"
+          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_35px_rgba(34,197,94,0.35)]"
           aria-label="Stop movement"
         >
           <Square size={32} fill="currentColor" />
