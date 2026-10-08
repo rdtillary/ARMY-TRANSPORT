@@ -51,7 +51,8 @@ export function startGeoWatch(
           }
         );
       } catch (e) {
-        onErr(String(e?.message || e || "Native GPS error"));
+        const errMsg = e instanceof Error ? e.message : String(e || "Native GPS error");
+        onErr(errMsg);
         return () => {};
       }
 
@@ -61,7 +62,8 @@ export function startGeoWatch(
         }
       };
     })().catch((e) => {
-      onErr(String(e?.message || e || "Native GPS error"));
+      const errMsg = e instanceof Error ? e.message : String(e || "Native GPS error");
+      onErr(errMsg);
       return () => {};
     });
   }
