@@ -48,9 +48,6 @@ export function startGeoWatch(
               heading: c.heading ?? undefined,
               accuracy: c.accuracy,
             });
-          },
-          (err) => {
-            onErr(String(err?.message || err || "Native GPS error"));
           }
         );
       } catch (e) {
