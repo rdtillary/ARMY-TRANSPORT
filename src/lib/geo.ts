@@ -9,7 +9,7 @@ export type GeoPos = {
 /**
  * Start a continuous GPS watch.
  * - Inside the Capacitor (Android APK) shell it uses @capacitor/geolocation
- *   with background mode enabled (native GPS, uses ACCESS_FINE_LOCATION permission).
+ *   with battery-safe background location handling.
  * - In a plain browser it falls back to navigator.geolocation.
  * Resolves to a function that stops the watch.
  */
@@ -22,43 +22,42 @@ export function startGeoWatch(
   if (cap?.isNativePlatform?.()) {
     return (async () => {
       const { Geolocation } = await import("@capacitor/geolocation");
+
       try {
         await Geolocation.requestPermissions({ permissions: ["location"] });
       } catch {
-        /* location services may be off — watch will surface the error */
+        // Android may deny or not expose background permission in some contexts.
       }
+
       let watchId: string | null = null;
-      
+
       try {
-        // Enable background geolocation by requesting background permission on Android 10+
-        await Geolocation.requestPermissions({ 
-          permissions: ["location"] 
-        }).catch(() => {
-          // Silently fail if background location not available
-        });
-      } catch {
-        // Ignore permission errors
+        watchId = await Geolocation.watchPosition(
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 1000,
+          },
+          (e) => {
+            if (!e) return;
+            const c = e.coords;
+            onPos({
+              lat: c.latitude,
+              lng: c.longitude,
+              speed: c.speed != null ? c.speed * 3.6 : undefined,
+              heading: c.heading ?? undefined,
+              accuracy: c.accuracy,
+            });
+          },
+          (err) => {
+            onErr(String(err?.message || err || "Native GPS error"));
+          }
+        );
+      } catch (e) {
+        onErr(String(e?.message || e || "Native GPS error"));
+        return () => {};
       }
-      
-      watchId = await Geolocation.watchPosition(
-        { 
-          enableHighAccuracy: true, 
-          timeout: 15000, 
-          maximumAge: 1000 
-        },
-        (e) => {
-          if (!e) return;
-          const c = e.coords;
-          onPos({
-            lat: c.latitude,
-            lng: c.longitude,
-            speed: c.speed != null ? c.speed * 3.6 : undefined,
-            heading: c.heading ?? undefined,
-            accuracy: c.accuracy,
-          });
-        }
-      );
-      
+
       return () => {
         if (watchId) {
           void Geolocation.clearWatch({ id: watchId }).catch(() => {});
@@ -76,7 +75,7 @@ export function startGeoWatch(
       resolve(() => {});
       return;
     }
-    
+
     const id = navigator.geolocation.watchPosition(
       (pos) =>
         onPos({
@@ -94,12 +93,13 @@ export function startGeoWatch(
         };
         onErr(msgs[err.code] || "GPS error");
       },
-      { 
-        enableHighAccuracy: true, 
-        maximumAge: 1000, 
-        timeout: 12000 
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 12000,
       }
     );
+
     resolve(() => navigator.geolocation.clearWatch(id));
   });
 }
