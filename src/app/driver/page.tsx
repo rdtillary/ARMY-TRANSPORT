@@ -143,34 +143,32 @@ export default function DriverPage() {
       }
     };
 
-    const restartWatch = () => {
-      if (cancelled) return;
-      clearWatchdog();
-      stop?.();
-      stop = null;
-      setGpsError("GPS stalled — reconnecting…");
-      startGeoWatch(send, (msg) => {
-        if (!cancelled) setGpsError(msg);
-      }).then((s) => {
-        if (cancelled) s();
-        else {
-          stop = s;
-          resetWatchdog();
-        }
-      });
-    };
-
     const resetWatchdog = () => {
       clearWatchdog();
       watchdog = setTimeout(() => {
-        if (!cancelled) restartWatch();
+        if (!cancelled) {
+          stop?.();
+          stop = null;
+          setGpsError("GPS stalled — reconnecting…");
+          startGeoWatch(send, (msg) => {
+            if (!cancelled) setGpsError(msg);
+          }).then((s) => {
+            if (cancelled) s();
+            else {
+              stop = s;
+              resetWatchdog();
+            }
+          });
+        }
       }, 20000);
     };
 
     const send = async (p: GeoPos) => {
       if (cancelled) return;
       setPos(p);
+      setGpsError(null);
       resetWatchdog();
+
       try {
         await fetch("/api/trips/track", {
           method: "POST",
@@ -178,7 +176,7 @@ export default function DriverPage() {
           body: JSON.stringify({ tripId: trip.id, ...p }),
         });
       } catch {
-        /* transient blip — next tick retries */
+        // transient blip — next tick retries
       }
     };
 
@@ -189,7 +187,6 @@ export default function DriverPage() {
         if (simRef.current) void send(simRef.current());
       }, 2500);
     } else {
-      setGpsError(null);
       startGeoWatch(send, (msg) => {
         if (!cancelled) setGpsError(msg);
       }).then((s) => {
