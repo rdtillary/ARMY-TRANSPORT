@@ -102,8 +102,9 @@ export function extractIndianPlate(raw: string): string | null {
   const m = hit.match(/^([A-Z]{2})([0-9]{1,2})([A-Z]{0,3})([0-9]{1,4})$/);
   if (m) {
     const [, st, rto, series, digits] = m;
-    if (digits.length < 4) return null; // incomplete read; refuse rather than misread
-    return st + rto.padStart(2, "0") + series + digits.padStart(4, "0");
+    // Pad digits to 4 chars instead of rejecting incomplete reads
+    const paddedDigits = digits.padStart(4, "0");
+    return st + rto.padStart(2, "0") + series + paddedDigits;
   }
   return hit;
 }
