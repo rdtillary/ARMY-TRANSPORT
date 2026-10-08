@@ -20,7 +20,6 @@ export const users = pgTable("users", {
 
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
-  cNo: integer("c_no").notNull().unique(),
   regNo: text("reg_no").notNull().unique(),
   type: text("type").notNull(),
   unit: text("unit").notNull(),

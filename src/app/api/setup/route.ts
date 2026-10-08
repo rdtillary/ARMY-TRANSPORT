@@ -9,7 +9,6 @@ const DDL = [
   )`,
   `create table if not exists vehicles (
     id serial primary key,
-    c_no integer not null unique,
     reg_no text not null unique,
     type text not null,
     unit text not null,
@@ -97,16 +96,5 @@ const DDL = [
     last_repeat_at timestamptz,
     resolved boolean not null default false,
     resolved_at timestamptz
-  )`,
-  `with numbered as (
-    select id, row_number() over (order by reg_no) as rn
-    from vehicles
-    where c_no is null
-  )
-  update vehicles v
-  set c_no = n.rn
-  from numbered n
-  where v.id = n.id`,
-  `alter table vehicles alter column c_no set not null`,
-  `alter table vehicles add constraint if not exists vehicles_c_no_unique unique (c_no)`
+  )`
 ];

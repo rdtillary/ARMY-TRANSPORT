@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { vehicles } from "@/db/schema";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 /** GET /api/vehicles */
 export async function GET() {
-  const rows = await db.select().from(vehicles).orderBy(asc(vehicles.cNo), asc(vehicles.regNo));
+  const rows = await db.select().from(vehicles).orderBy(asc(vehicles.regNo));
   return NextResponse.json({ vehicles: rows });
 }
 
 /**
  * POST /api/vehicles
- *   single: {cNo?, regNo, type, unit, fuelPct?, mileage?, maintenanceDue?, status?}
+ *   single: {regNo, type, unit, fuelPct?, mileage?, maintenanceDue?, status?}
  *   bulk:   {bulk: "regNo,type,unit\n..."}  (# lines ignored)
  */
 export async function POST(req: Request) {
@@ -63,26 +63,15 @@ async function createOne(b: any): Promise<any> {
   const mileage = Math.max(0, Number(b.mileage ?? 0) || 0);
   const maintenanceDue = b.maintenanceDue || null;
   const status = ["available", "maintenance"].includes(b.status) ? b.status : "available";
-  const requestedCNo = Number(b.cNo ?? 0);
 
   if (!regNo) return { error: "Vehicle registration number is required", status: 400 };
 
   const existing = await db.select().from(vehicles).where(eq(vehicles.regNo, regNo));
   if (existing.length) return { error: `${regNo} already exists`, status: 409 };
 
-  const nextCNo =
-    Number.isFinite(requestedCNo) && requestedCNo > 0
-      ? requestedCNo
-      : await getNextVehicleNumber();
-
   const [v] = await db
     .insert(vehicles)
-    .values({ cNo: nextCNo, regNo, type, unit, fuelPct, mileage, maintenanceDue, status })
+    .values({ regNo, type, unit, fuelPct, mileage, maintenanceDue, status })
     .returning();
   return { vehicle: v };
-}
-
-async function getNextVehicleNumber(): Promise<number> {
-  const [row] = await db.select({ max: sql<number>`max(${vehicles.cNo})` }).from(vehicles);
-  return (row?.max ?? 0) + 1;
 }

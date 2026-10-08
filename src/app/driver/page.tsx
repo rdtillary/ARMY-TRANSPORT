@@ -8,7 +8,7 @@ import { getSession, clearSession, type Session } from "@/lib/session";
 import { startGeoWatch, type GeoPos } from "@/lib/geo";
 import { createSimulator, BASE_POS } from "@/lib/simulate";
 
-type Vehicle = { id: number; cNo?: number; regNo: string; type: string; unit: string; status: string };
+type Vehicle = { id: number; regNo: string; type: string; unit: string; status: string };
 type Trip = { id: number; vehicleId: number; startedAt: string; regNo: string; type: string };
 
 export default function DriverPage() {
@@ -234,8 +234,6 @@ export default function DriverPage() {
     flash("SOS transmitted to command");
   };
 
-  const formatVehicleLabel = (v: Vehicle) => `${v.cNo ?? v.id} • ${v.regNo} • ${v.type}`;
-
   if (!session) return null;
 
   const available = vehicles.filter((v) => v.status === "available");
@@ -316,7 +314,7 @@ export default function DriverPage() {
                 <option value="">— SELECT VEHICLE —</option>
                 {available.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {formatVehicleLabel(v)}
+                    {v.regNo} • {v.type}
                   </option>
                 ))}
               </select>
