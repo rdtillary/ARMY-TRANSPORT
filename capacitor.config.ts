@@ -7,7 +7,8 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://mctetransportsys.onrender.com', 
     androidScheme: 'https'
-  }
+  },
+  android: { allowMixedContent: true, useLegacyBridge: true }
 };
 
 export default config;

@@ -6,6 +6,7 @@ import MapView from "@/components/MapView";
 import McteLogo from "@/components/McteLogo";
 import { getSession, clearSession, type Session } from "@/lib/session";
 import { startGeoWatch, type GeoPos } from "@/lib/geo";
+import { enqueue, flush, clearQueue } from "@/lib/trackQueue";
 import { createSimulator, BASE_POS } from "@/lib/simulate";
 
 type Vehicle = { id: number; regNo: string; type: string; unit: string; status: string };
@@ -130,10 +131,14 @@ export default function DriverPage() {
   /* GPS / simulation tracking loop */
   useEffect(() => {
     if (!trip) return;
+    const tripId = trip.id;
 
     let stop: (() => void) | null = null;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
     let watchdog: ReturnType<typeof setTimeout> | null = null;
+    let lastFix: GeoPos | null = null;
+    let lastFixAt = 0;
     let cancelled = false;
 
     const clearWatchdog = () => {
@@ -143,50 +148,9 @@ export default function DriverPage() {
       }
     };
 
-    const resetWatchdog = () => {
-      clearWatchdog();
-      watchdog = setTimeout(() => {
-        if (!cancelled) {
-          stop?.();
-          stop = null;
-          setGpsError("GPS stalled — reconnecting…");
-          startGeoWatch(send, (msg) => {
-            if (!cancelled) setGpsError(msg);
-          }).then((s) => {
-            if (cancelled) s();
-            else {
-              stop = s;
-              resetWatchdog();
-            }
-          });
-        }
-      }, 20000);
-    };
-
-    const send = async (p: GeoPos) => {
-      if (cancelled) return;
-      setPos(p);
-      setGpsError(null);
-      resetWatchdog();
-
-      try {
-        await fetch("/api/trips/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tripId: trip.id, ...p }),
-        });
-      } catch {
-        // transient blip — next tick retries
-      }
-    };
-
-    if (simMode) {
-      simRef.current = createSimulator();
-      void send(simRef.current());
-      timer = setInterval(() => {
-        if (simRef.current) void send(simRef.current());
-      }, 2500);
-    } else {
+    const restartWatch = () => {
+      stop?.();
+      stop = null;
       startGeoWatch(send, (msg) => {
         if (!cancelled) setGpsError(msg);
       }).then((s) => {
@@ -196,6 +160,67 @@ export default function DriverPage() {
           resetWatchdog();
         }
       });
+    };
+
+    const resetWatchdog = () => {
+      clearWatchdog();
+      watchdog = setTimeout(() => {
+        if (cancelled) return;
+        // While the screen is off the OS may delay timers; only restart the
+        // GPS watch when the driver is actually looking at the app.
+        if (document.visibilityState !== "visible") {
+          resetWatchdog();
+          return;
+        }
+        setGpsError("GPS stalled — reconnecting…");
+        restartWatch();
+      }, 30000);
+    };
+
+    // Every fix is saved locally first, then uploaded. Anything that could not
+    // be uploaded (phone asleep / no signal) is sent later with its original time.
+    const send = (p: GeoPos) => {
+      if (cancelled) return;
+      lastFix = p;
+      lastFixAt = Date.now();
+      setPos(p);
+      setGpsError(null);
+      resetWatchdog();
+      enqueue(tripId, p);
+      void flush(tripId);
+    };
+
+    // A parked vehicle produces no new GPS fixes; re-report the last one so
+    // the control room does not mark it "stale".
+    heartbeat = setInterval(() => {
+      if (cancelled) return;
+      if (lastFix && Date.now() - lastFixAt > 15000) {
+        enqueue(tripId, { ...lastFix, speed: 0, ts: Date.now() });
+      }
+      void flush(tripId);
+    }, 15000);
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || cancelled) return;
+      void flush(tripId);
+      // Woke up with no recent fix — re-arm the GPS watch right away.
+      if (!simMode && Date.now() - lastFixAt > 20000) restartWatch();
+    };
+    const onOnline = () => void flush(tripId);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+
+    // Send whatever is left over from an earlier session of this trip.
+    void flush(tripId);
+
+    if (simMode) {
+      simRef.current = createSimulator();
+      send(simRef.current());
+      timer = setInterval(() => {
+        if (simRef.current) send(simRef.current());
+      }, 2500);
+    } else {
+      restartWatch();
     }
 
     return () => {
@@ -203,6 +228,9 @@ export default function DriverPage() {
       clearWatchdog();
       stop?.();
       if (timer) clearInterval(timer);
+      if (heartbeat) clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip?.id, simMode]);
@@ -246,6 +274,8 @@ export default function DriverPage() {
 
   const stop = async () => {
     if (!trip) return;
+    await flush(trip.id); // push any positions still waiting to upload
+    clearQueue(trip.id);
     await fetch("/api/trips/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -49,6 +49,7 @@ jobs:
             @capacitor/cli@^8.5.0 \
             @capacitor/android@^8.5.0 \
             @capacitor/geolocation@^8.2.2 \
+            @capacitor-community/background-geolocation@^1.2.26 \
             sharp@^0.35.4
 
       - name: Write Capacitor config and web shell
@@ -70,7 +71,7 @@ jobs:
             appName: "MCTE Transport",
             webDir: "capacitor-web",
             server: { url: "", androidScheme: "https" },
-            android: { allowMixedContent: true },
+            android: { allowMixedContent: true, useLegacyBridge: true },
           };
           export default config;
           TSEOF
@@ -99,6 +100,16 @@ jobs:
             sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
           fi
           echo "Permissions:"; grep "uses-permission" android/app/src/main/AndroidManifest.xml || true
+
+      - name: Add background-tracking permissions
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          for perm in ACCESS_BACKGROUND_LOCATION FOREGROUND_SERVICE FOREGROUND_SERVICE_LOCATION POST_NOTIFICATIONS WAKE_LOCK; do
+            if ! grep -q "android.permission.$perm\"" "$M"; then
+              sed -i "s#</manifest>#    <uses-permission android:name=\"android.permission.$perm\" />\n</manifest>#" "$M"
+            fi
+          done
+          echo "Permissions:"; grep "uses-permission" "$M"
 
       - name: Write the icon generator
         run: |
