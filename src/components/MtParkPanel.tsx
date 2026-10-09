@@ -9,6 +9,9 @@ import {
   RefreshCw,
   Route,
   Truck,
+  Video,
+  VideoOff,
+  ScanLine,
 } from "lucide-react";
 import { timeAgo, fmtClock } from "@/lib/session";
 import AnprGate from "@/components/AnprGate";
@@ -43,14 +46,32 @@ type OpsState = {
   totals: { total: number; in: number; out: number; trackingOn: number };
 };
 
+// How often the auto scan captures a frame (milliseconds)
+const AUTO_SCAN_INTERVAL = 8000;
+// Minimum confidence to auto-log without operator confirmation
+const AUTO_LOG_THRESHOLD = 0.85;
+
 export default function MtParkPanel() {
   const [state, setState] = useState<OpsState | null>(null);
   const [auto, setAuto] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [busyId, setBusyId] = useState<number | null>(null);
   const [photoLightbox, setPhotoLightbox] = useState<Photo | null>(null);
+
+  // Auto scan state
+  const [camReady, setCamReady] = useState(false);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [countdown, setCountdown] = useState(AUTO_SCAN_INTERVAL / 1000);
+  const [lastScanResult, setLastScanResult] = useState<string | null>(null);
+  const [lastScanColor, setLastScanColor] = useState<"green" | "amber" | "red">("amber");
+  const [showAutoPanel, setShowAutoPanel] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const autoRef = useRef(auto);
   autoRef.current = auto;
+  const scanningRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -72,15 +93,132 @@ export default function MtParkPanel() {
     };
   }, [load]);
 
+  // Start or stop webcam when auto mode toggles
   useEffect(() => {
-    if (!auto) return;
-    const t = setInterval(async () => {
-      if (!autoRef.current) return;
-      await fetch("/api/gate/simulate", { method: "POST" });
-      load();
-    }, 12000);
-    return () => clearInterval(t);
-  }, [auto, load]);
+    if (auto) {
+      startWebcam();
+      setShowAutoPanel(true);
+    } else {
+      stopWebcam();
+      setLastScanResult(null);
+      setCountdown(AUTO_SCAN_INTERVAL / 1000);
+    }
+    return () => {
+      if (!auto) stopWebcam();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto]);
+
+  const startWebcam = async () => {
+    setCamError(null);
+    setCamReady(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+      setCamReady(true);
+    } catch {
+      setCamError("Camera unavailable — allow camera permission in your browser and use HTTPS.");
+      setAuto(false);
+    }
+  };
+
+  const stopWebcam = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCamReady(false);
+  };
+
+  // Capture one frame from the webcam and send to /api/gate/scan
+  const captureAndScan = useCallback(async () => {
+    if (scanningRef.current || !videoRef.current || !camReady) return;
+    const video = videoRef.current;
+    if (video.readyState < 2) return; // video not ready
+
+    scanningRef.current = true;
+    setScanning(true);
+    setLastScanResult("Scanning…");
+    setLastScanColor("amber");
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, "image/jpeg", 0.85)
+      );
+      if (!blob) return;
+
+      const fd = new FormData();
+      fd.append("image", blob, "auto_capture.jpg");
+      // direction "auto" lets the server flip the current park status
+      fd.append("direction", "auto");
+
+      const res = await fetch("/api/gate/scan", { method: "POST", body: fd });
+      const d = await res.json();
+
+      if (d.ok && d.scanned) {
+        // Auto-logged successfully
+        setLastScanResult(
+          `✓ ${d.regNo} — ${d.direction?.toUpperCase()} — ${d.confidence?.toFixed(1)}% confidence`
+        );
+        setLastScanColor("green");
+        await load();
+      } else if (d.needConfirmation) {
+        // Plate read but below threshold — show what was detected
+        const plate = d.detectedPlate || "unreadable";
+        const conf = d.confidence ? `${d.confidence.toFixed(0)}%` : "low";
+        setLastScanResult(
+          `⚠ Plate: ${plate} (${conf}) — open Gate Camera to confirm manually`
+        );
+        setLastScanColor("amber");
+      } else if (d.error) {
+        setLastScanResult(`✗ ${d.error}`);
+        setLastScanColor("red");
+      }
+    } catch {
+      setLastScanResult("✗ Scan failed — check connection");
+      setLastScanColor("red");
+    } finally {
+      scanningRef.current = false;
+      setScanning(false);
+      setCountdown(AUTO_SCAN_INTERVAL / 1000);
+    }
+  }, [camReady, load]);
+
+  // Auto scan loop with countdown
+  useEffect(() => {
+    if (!auto || !camReady) return;
+
+    // Scan immediately when auto turns on and camera is ready
+    const initial = setTimeout(() => captureAndScan(), 1500);
+
+    // Then scan on interval
+    const scanTimer = setInterval(() => {
+      if (autoRef.current) captureAndScan();
+    }, AUTO_SCAN_INTERVAL);
+
+    // Countdown ticker
+    const tick = setInterval(() => {
+      setCountdown((c) => (c <= 1 ? AUTO_SCAN_INTERVAL / 1000 : c - 1));
+    }, 1000);
+
+    return () => {
+      clearTimeout(initial);
+      clearInterval(scanTimer);
+      clearInterval(tick);
+    };
+  }, [auto, camReady, captureAndScan]);
 
   const scan = async (vehicleId: number, direction: "in" | "out") => {
     setBusyId(vehicleId);
@@ -104,6 +242,13 @@ export default function MtParkPanel() {
 
   const t = state?.totals;
 
+  const resultColorClass =
+    lastScanColor === "green"
+      ? "text-emerald-300 border-emerald-600/40 bg-emerald-950/30"
+      : lastScanColor === "red"
+      ? "text-rose-300 border-rose-600/40 bg-rose-950/30"
+      : "text-amber-300 border-amber-600/40 bg-amber-950/30";
+
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -113,18 +258,123 @@ export default function MtParkPanel() {
         <div className="flex items-center gap-2">
           <AnprGate onScanned={load} />
           <button
-          onClick={() => setAuto((a) => !a)}
-          className={`flex items-center gap-2 text-xs font-extrabold px-3.5 py-2 rounded-lg border transition ${
-            auto
-              ? "bg-rose-800/70 border-rose-500/60 text-white"
-              : "bg-[#2a361d] border-[#8b6f2e]/40 text-[#d4c48a] hover:bg-[#33421f]"
-          }`}
-        >
-            <RefreshCw size={13} className={auto ? "animate-spin" : ""} />
+            onClick={() => setAuto((a) => !a)}
+            className={`flex items-center gap-2 text-xs font-extrabold px-3.5 py-2 rounded-lg border transition ${
+              auto
+                ? "bg-rose-800/70 border-rose-500/60 text-white"
+                : "bg-[#2a361d] border-[#8b6f2e]/40 text-[#d4c48a] hover:bg-[#33421f]"
+            }`}
+          >
+            <RefreshCw size={13} className={auto && camReady ? "animate-spin" : ""} />
             {auto ? "AUTO CAMERA SCAN: ON" : "AUTO CAMERA SCAN: OFF"}
           </button>
         </div>
       </div>
+
+      {/* ── AUTO SCAN PANEL ── shown when auto is ON */}
+      {auto && showAutoPanel && (
+        <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/30 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-extrabold tracking-widest text-[#d4c48a] flex items-center gap-2">
+              <Video size={15} /> LIVE GATE CAMERA — AUTO SCAN ACTIVE
+            </h3>
+            <button
+              onClick={() => { setAuto(false); setShowAutoPanel(false); }}
+              className="p-1.5 rounded-lg border border-[#4a3a2a]/50 text-[#a89a76] hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Live camera preview */}
+            <div className="relative rounded-xl overflow-hidden border border-[#8b6f2e]/30 bg-black aspect-video">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+
+              {/* Scanning pulse overlay */}
+              {scanning && (
+                <div className="absolute inset-0 border-2 border-[#d4c48a] rounded-xl animate-pulse pointer-events-none" />
+              )}
+
+              {/* Status badge top-left */}
+              {camReady ? (
+                <span className="absolute top-2 left-2 text-[10px] font-extrabold bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  LIVE
+                </span>
+              ) : camError ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
+                  <VideoOff size={24} className="text-amber-300" />
+                  <p className="text-xs text-amber-200">{camError}</p>
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-[#a89a76]">
+                  Starting camera…
+                </div>
+              )}
+
+              {/* Scan animation overlay */}
+              {scanning && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <ScanLine size={48} className="text-[#d4c48a] opacity-80 animate-pulse" />
+                </div>
+              )}
+
+              {/* Next scan countdown bottom-right */}
+              {camReady && !scanning && (
+                <span className="absolute bottom-2 right-2 text-[10px] font-bold bg-black/70 text-[#d4c48a] px-2 py-0.5 rounded">
+                  Next scan in {countdown}s
+                </span>
+              )}
+
+              {/* Scanning label bottom-right */}
+              {scanning && (
+                <span className="absolute bottom-2 right-2 text-[10px] font-extrabold bg-[#d4c48a]/20 text-[#d4c48a] px-2 py-0.5 rounded animate-pulse">
+                  SCANNING…
+                </span>
+              )}
+            </div>
+
+            {/* Status panel */}
+            <div className="space-y-3 flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-[#a89a76] font-bold mb-1">
+                  How it works
+                </p>
+                <ul className="text-xs text-[#8b8064] space-y-1 leading-relaxed">
+                  <li>• Camera captures a frame every {AUTO_SCAN_INTERVAL / 1000} seconds</li>
+                  <li>• Plate Recognizer reads the number plate</li>
+                  <li>• ≥ 85% match → logged automatically</li>
+                  <li>• &lt; 85% → open Gate Camera to confirm</li>
+                </ul>
+              </div>
+
+              {/* Last scan result */}
+              {lastScanResult && (
+                <div className={`rounded-lg border px-3 py-2.5 text-xs font-bold ${resultColorClass}`}>
+                  <p className="text-[9px] uppercase tracking-widest opacity-70 mb-0.5">Last scan result</p>
+                  {lastScanResult}
+                </div>
+              )}
+
+              {/* Manual trigger */}
+              <button
+                onClick={captureAndScan}
+                disabled={scanning || !camReady}
+                className="w-full py-2.5 bg-[#8b6f2e] text-[#1a1508] font-extrabold rounded-xl disabled:opacity-40 flex items-center justify-center gap-2 text-xs"
+              >
+                <Camera size={14} />
+                {scanning ? "SCANNING…" : "SCAN NOW (manual trigger)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -271,8 +521,8 @@ export default function MtParkPanel() {
           <div className="text-center py-10">
             <Camera size={34} className="mx-auto text-[#4a3a1a] mb-2" />
             <p className="text-xs text-[#8b8064]">
-              No captures yet. Press <b>SCAN OUT / SCAN IN</b> in the table, or switch on
-              <b> Auto Camera Scan</b> to simulate the ANPR camera.
+              No captures yet. Press <b>SCAN OUT / SCAN IN</b> in the table, or switch on{" "}
+              <b>Auto Camera Scan</b> to begin real webcam ANPR.
             </p>
           </div>
         )}
@@ -312,10 +562,20 @@ export default function MtParkPanel() {
 
       {/* Photo lightbox */}
       {photoLightbox && (
-        <div className="fixed inset-0 z-[1000] bg-black/80 flex items-center justify-center p-4" onClick={() => setPhotoLightbox(null)}>
-          <div className="bg-[#161f10] border border-[#8b6f2e]/40 rounded-2xl overflow-hidden max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[1000] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setPhotoLightbox(null)}
+        >
+          <div
+            className="bg-[#161f10] border border-[#8b6f2e]/40 rounded-2xl overflow-hidden max-w-2xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photoLightbox.photoUrl} alt={photoLightbox.plateText} className="w-full max-h-[60vh] object-cover" />
+            <img
+              src={photoLightbox.photoUrl}
+              alt={photoLightbox.plateText}
+              className="w-full max-h-[60vh] object-cover"
+            />
             <div className="p-4 flex items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-extrabold">{photoLightbox.plateText}</div>
@@ -327,7 +587,10 @@ export default function MtParkPanel() {
                   Plate read confidence {photoLightbox.confidence.toFixed(1)}%
                 </div>
               </div>
-              <button onClick={() => setPhotoLightbox(null)} className="p-2 rounded-lg border border-[#4a3a2a]/50 text-[#a89a76] hover:text-white">
+              <button
+                onClick={() => setPhotoLightbox(null)}
+                className="p-2 rounded-lg border border-[#4a3a2a]/50 text-[#a89a76] hover:text-white"
+              >
                 <X size={16} />
               </button>
             </div>
