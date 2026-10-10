@@ -29,7 +29,6 @@ const toDigits = (s: string) =>
 const toLetters = (s: string) =>
   s.split("").map((c) => (/[A-Z]/.test(c) ? c : DIGIT_TO_LETTER[c] || c)).join("");
 
-/* OCR character confusion, applied only at positions that should be digits. */
 const LETTER_TO_DIGIT: Record<string, string> = {
   O: "0", Q: "0", D: "0",
   I: "1", L: "1", T: "1",
@@ -40,18 +39,12 @@ const LETTER_TO_DIGIT: Record<string, string> = {
 };
 const DIGIT_TO_LETTER: Record<string, string> = { 0: "O", 1: "I", 8: "B", 5: "S", 6: "G", 2: "Z" };
 
-/**
- * Find an Indian-format registration (e.g. MP09AB1234) inside noisy OCR text.
- * Applies OCR-confusion corrections at contextually appropriate positions.
- */
 export function extractIndianPlate(raw: string): string | null {
   const text = raw.toUpperCase();
   const compact = text.replace(/[^A-Z0-9]/g, "");
 
-  // Military/MT format: 4 digits, 2 letters, 4 digits (e.g. 0012 AB 3456)
   const mil = compact.match(/[0-9]{4}[A-Z]{2}[0-9]{4}/)?.[0];
   if (mil) {
-    // Apply digit/letter context corrections on noisy reads.
     return (
       toDigits(mil.slice(0, 4)) +
       toLetters(mil.slice(4, 6)) +
@@ -65,7 +58,6 @@ export function extractIndianPlate(raw: string): string | null {
   let hit = tryMatch(compact);
 
   if (!hit) {
-    // First pass: locate a known two-letter state/UT code, then fix the tail.
     const stateCodes =
       "AP|AR|AS|BR|CG|CH|DD|DL|GA|GJ|HP|HR|JH|JK|KA|KL|LA|LD|MH|ML|MN|MP|MZ|NL|OD|PB|PY|RJ|SK|TG|TN|TS|UK|UP|WB";
     const st = compact.match(new RegExp(`(?:${stateCodes})[A-Z0-9]{5,9}`));
@@ -73,24 +65,16 @@ export function extractIndianPlate(raw: string): string | null {
       const frag = st[0];
       const code = frag.slice(0, 2);
       let rest = frag.slice(2);
-      // Beginning of tail = RTO number (1-2 digits).
       rest = rest.replace(/^([A-Z])(?=[A-Z0-9])/, (_, c) => LETTER_TO_DIGIT[c] || c);
       rest = rest.replace(/^([0-9])([A-Z])(?=[A-Z0-9])/, (_, d, c) => d + c);
-      // Two-digit RTO where the 2nd char was misread as a letter.
       rest = rest.replace(/^([0-9])([A-Z])(?=[A-Z])/, (_, d, c) => d + (LETTER_TO_DIGIT[c] || c));
-      // Final 4 must be digits.
       rest = rest.replace(/[A-Z0-9]{4}$/g, (tail) =>
-        tail
-          .split("")
-          .map((c) => (/[0-9]/.test(c) ? c : LETTER_TO_DIGIT[c] || c))
-          .join("")
+        tail.split("").map((c) => (/[0-9]/.test(c) ? c : LETTER_TO_DIGIT[c] || c)).join("")
       );
-      // Series letters between RTO digits and the final 4: fix digits masquerading as letters.
       rest = rest.replace(/^([0-9]{1,2})([0-9A-Z]+?)([0-9]{4})$/, (_m, rto, series, end) => {
-        const fixedSeries = series
-          .split("")
-          .map((c: string) => (/[A-Z]/.test(c) ? c : DIGIT_TO_LETTER[c] || c))
-          .join("");
+        const fixedSeries = series.split("").map((c: string) =>
+          (/[A-Z]/.test(c) ? c : DIGIT_TO_LETTER[c] || c)
+        ).join("");
         return rto + fixedSeries + end;
       });
       hit = tryMatch(code + rest);
@@ -98,18 +82,14 @@ export function extractIndianPlate(raw: string): string | null {
   }
 
   if (!hit) return null;
-  // Pad / tidy to 10 chars where possible.
   const m = hit.match(/^([A-Z]{2})([0-9]{1,2})([A-Z]{0,3})([0-9]{1,4})$/);
   if (m) {
     const [, st, rto, series, digits] = m;
-    // Pad digits to 4 chars instead of rejecting incomplete reads
     const paddedDigits = digits.padStart(4, "0");
     return st + rto.padStart(2, "0") + series + paddedDigits;
   }
   return hit;
 }
-
-/* --------------------------------------------------------- preprocessing */
 
 async function preprocess(buf: Buffer) {
   const meta = await sharp(buf).rotate().metadata();
@@ -119,26 +99,11 @@ async function preprocess(buf: Buffer) {
   const base = sharp(buf).rotate().resize({ width: targetW, withoutEnlargement: false });
 
   const [gray, binary] = await Promise.all([
-    base
-      .clone()
-      .greyscale()
-      .normalise()
-      .sharpen({ sigma: 1.4 })
-      .jpeg({ quality: 92 })
-      .toBuffer(),
-    base
-      .clone()
-      .greyscale()
-      .normalise()
-      .sharpen({ sigma: 1.6 })
-      .threshold(150)
-      .jpeg({ quality: 92 })
-      .toBuffer(),
+    base.clone().greyscale().normalise().sharpen({ sigma: 1.4 }).jpeg({ quality: 92 }).toBuffer(),
+    base.clone().greyscale().normalise().sharpen({ sigma: 1.6 }).threshold(150).jpeg({ quality: 92 }).toBuffer(),
   ]);
   return { gray, binary };
 }
-
-/* ----------------------------------------------------------- local OCR */
 
 async function localTesseract(buf: Buffer): Promise<AnprResult> {
   const { gray, binary } = await preprocess(buf);
@@ -149,7 +114,6 @@ async function localTesseract(buf: Buffer): Promise<AnprResult> {
   });
   const attempts: { text: string; conf: number; psm: number }[] = [];
   try {
-    // PSM 11 = sparse text (two-line plates), 7 = single line plate
     for (const psm of [11, 7]) {
       await worker.setParameters({
         tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -",
@@ -184,8 +148,6 @@ async function localTesseract(buf: Buffer): Promise<AnprResult> {
   };
 }
 
-/* ------------------------------------------------- Plate Recognizer cloud */
-
 async function cloudPlateRecognizer(buf: Buffer): Promise<AnprResult | null> {
   const token = process.env.PLATE_RECOGNIZER_TOKEN;
   if (!token) return null;
@@ -193,7 +155,16 @@ async function cloudPlateRecognizer(buf: Buffer): Promise<AnprResult | null> {
     const blob = new Blob([new Uint8Array(buf)], { type: "image/jpeg" });
     const fd = new FormData();
     fd.append("upload", blob, "capture.jpg");
-    fd.append("regions", "in"); // India
+    // Send both India regions for better accuracy
+    // "in" = India general, plus state-specific hints improve military plate reading
+    fd.append("regions", "in");
+    fd.append("config", JSON.stringify({
+      // Return ALL plates found in the image, not just the first one
+      // This is critical for gate camera photos with multiple vehicles
+      mode: "redaction",
+      detection_rule: "strict",
+    }));
+
     const res = await fetch("https://api.platerecognizer.com/v1/plate-reader/", {
       method: "POST",
       headers: { Authorization: `Token ${token}` },
@@ -201,30 +172,41 @@ async function cloudPlateRecognizer(buf: Buffer): Promise<AnprResult | null> {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const top = data?.results?.[0];
-    if (!top?.plate) return { plate: null, compact: null, confidence: 0, engine: "plate-recognizer", rawText: "" };
+
+    // Pick the result with highest score — for gate photos with multiple
+    // vehicles this picks the closest / most prominent plate
+    const results: any[] = data?.results || [];
+    if (results.length === 0) {
+      return { plate: null, compact: null, confidence: 0, engine: "plate-recognizer", rawText: "" };
+    }
+
+    // Sort by score descending and pick best
+    results.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const top = results[0];
+
+    if (!top?.plate) {
+      return { plate: null, compact: null, confidence: 0, engine: "plate-recognizer", rawText: "" };
+    }
+
     const compact = compactPlate(top.plate);
     return {
       plate: formatPlate(compact) || top.plate.toUpperCase(),
       compact,
-      confidence: Math.round((top.score ?? 0.9) * 100),
+      // Use dscore (detection score) combined with score for better confidence
+      confidence: Math.round(((top.score ?? 0.5) * 0.6 + (top.dscore ?? 0.5) * 0.4) * 100),
       engine: "plate-recognizer",
-      rawText: JSON.stringify(data.results[0]),
+      rawText: JSON.stringify(results.slice(0, 3)), // keep top 3 for debugging
     };
   } catch {
     return null;
   }
 }
 
-/* ------------------------------------------------------------- main API */
-
 export async function recognizePlate(buf: Buffer): Promise<AnprResult> {
   const cloud = await cloudPlateRecognizer(buf).catch(() => null);
   if (cloud?.plate) return cloud;
   return localTesseract(buf);
 }
-
-/* --------------------------------------------- fleet matching (Levenshtein) */
 
 export function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -242,7 +224,6 @@ export function levenshtein(a: string, b: string): number {
   return d[m][n];
 }
 
-/** Score 0..1 similarity between a read plate and a registered plate. */
 export function scorePlate(readCompact: string, fleetCompact: string): number {
   if (!readCompact || !fleetCompact) return 0;
   if (readCompact === fleetCompact) return 1;
