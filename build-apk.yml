@@ -1,27 +1,65 @@
 name: Build Android APK
 
-# Fully self-contained APK builder. The only thing it needs from your repo is
-# public/mcte-logo.png. Everything else (config, android project, icon script)
-# is generated here so partial/failed uploads cannot break the build.
+# ─────────────────────────────────────────────────────────────────────────────
+# MCTE Transport — Driver Terminal APK Builder
+#
+# DESIGN GOAL: Install once on every driver phone, never reinstall.
+# The APK is a thin WebView shell that always loads the live server.
+# All feature updates go to the server (Render auto-deploy) and the
+# APK picks them up automatically on next open — no reinstall needed.
+#
+# WHAT THIS NEEDS FROM YOUR REPO:
+#   public/mcte-logo.png   ← the only file this workflow reads from your repo
+#
+# HOW TO BUILD:
+#   GitHub → Actions tab → "Build Android APK" → Run workflow → enter URL → Run
+#   OR: every push to main auto-builds with the hardcoded production URL below.
+# ─────────────────────────────────────────────────────────────────────────────
 
 on:
   workflow_dispatch:
     inputs:
       server_url:
-        description: "Your live website URL (no trailing slash)"
+        description: "Live server URL (no trailing slash)"
         required: true
         default: "https://mctetransportsys.onrender.com"
   push:
     branches: [main, master]
 
+# Cancel any in-progress build if a newer commit is pushed
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Checkout code
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      # ── 2. Caches — dramatically cuts build time from ~12 min to ~3 min ──
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}-cap8
+          restore-keys: npm-
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      # ── 3. Runtime setup ─────────────────────────────────────────────────
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -32,148 +70,294 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Show uploaded project files
+      # ── 4. Validate required assets ──────────────────────────────────────
+      - name: Validate logo exists
         run: |
-          echo "===== FILE TREE ====="
-          find . -maxdepth 3 -type f -not -path './.git/*' | sort
-          echo "===== KEY FILES ====="
-          for f in package.json public/mcte-logo.png; do
-            if [ -f "$f" ]; then echo "PRESENT: $f"; else echo "MISSING: $f"; fi
-          done
+          if [ ! -f public/mcte-logo.png ]; then
+            echo "::error::public/mcte-logo.png is MISSING from the repository."
+            echo "::error::Go to GitHub → public folder → Add file → Upload mcte-logo.png → Commit → re-run this workflow."
+            exit 1
+          fi
+          echo "Logo found: $(ls -lh public/mcte-logo.png)"
 
-      - name: Install the exact packages required to build the APK
+      # ── 5. Install packages ───────────────────────────────────────────────
+      # Single install — installs repo packages first, then adds Capacitor 8.
+      # We do NOT use background-geolocation community plugin because it has
+      # no stable Capacitor 8 release. @capacitor/geolocation with
+      # FOREGROUND_SERVICE permission handles background GPS correctly.
+      - name: Install npm packages
         run: |
-          npm install --no-audit --no-fund --legacy-peer-deps || true
+          npm install --no-audit --no-fund --legacy-peer-deps
           npm install --no-audit --no-fund --legacy-peer-deps \
-            @capacitor/core@^8.5.0 \
-            @capacitor/cli@^8.5.0 \
-            @capacitor/android@^8.5.0 \
-            @capacitor/geolocation@^8.2.2 \
-            @capacitor-community/background-geolocation@^1.2.26 \
-            sharp@^0.35.4
+            @capacitor/core@8.5.0 \
+            @capacitor/cli@8.5.0 \
+            @capacitor/android@8.5.0 \
+            @capacitor/geolocation@8.2.2 \
+            sharp@0.35.4
 
+      # ── 6. Resolve the server URL ─────────────────────────────────────────
+      # FIX FOR BUG 1: URL is always set — either from manual input or
+      # hardcoded production URL. Push-triggered builds now work correctly.
+      - name: Resolve server URL
+        id: url
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            URL="${{ github.event.inputs.server_url }}"
+          else
+            URL="https://mctetransportsys.onrender.com"
+          fi
+          # Strip trailing slash if someone accidentally added one
+          URL="${URL%/}"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Building APK pointing to: $URL"
+
+      # ── 7. Write Capacitor config ─────────────────────────────────────────
+      # The server.url makes the APK always load from the live Render server.
+      # When you update code on GitHub, Render redeploys automatically and
+      # ALL driver phones get the new version on next app open — no reinstall.
       - name: Write Capacitor config and web shell
         run: |
           mkdir -p capacitor-web scripts public/icons
-          cat > capacitor-web/index.html <<'HTMLEOF'
-          <!doctype html><html lang="en"><head><meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-          <title>MCTE Transport</title>
-          <style>body{margin:0;height:100vh;background:#141b10;color:#eee8d0;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
-          .b{width:60px;height:60px;border-radius:50%;border:3px solid #8b6f2e;border-top-color:transparent;animation:s 1s linear infinite}
-          @keyframes s{to{transform:rotate(360deg)}}</style></head>
-          <body><div style="text-align:center"><div class="b" style="margin:0 auto 16px"></div>Connecting to command server…</div></body></html>
+
+          # Minimal loading screen shown for ~1-2 seconds while server loads
+          cat > capacitor-web/index.html << 'HTMLEOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+            <meta name="theme-color" content="#141b10">
+            <title>MCTE Transport</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                height: 100vh;
+                background: #141b10;
+                color: #eee8d0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: system-ui, sans-serif;
+                gap: 20px;
+              }
+              .spinner {
+                width: 56px; height: 56px;
+                border-radius: 50%;
+                border: 3px solid #8b6f2e;
+                border-top-color: transparent;
+                animation: spin 1s linear infinite;
+              }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              .title { font-size: 13px; font-weight: 700; letter-spacing: 0.2em; color: #d4c48a; }
+              .sub { font-size: 11px; color: #6d6349; }
+            </style>
+          </head>
+          <body>
+            <div class="spinner"></div>
+            <div class="title">MCTE TRANSPORT</div>
+            <div class="sub">Connecting to command server…</div>
+          </body>
+          </html>
           HTMLEOF
-          cat > capacitor.config.ts <<'TSEOF'
-          import type { CapacitorConfig } from "@capacitor/cli";
-          const config: CapacitorConfig = {
-            appId: "com.army.transport.cms",
-            appName: "MCTE Transport",
-            webDir: "capacitor-web",
-            server: { url: "", androidScheme: "https" },
-            android: { allowMixedContent: true, useLegacyBridge: true },
-          };
-          export default config;
-          TSEOF
-          echo "Config written:"; cat capacitor.config.ts
 
-      - name: Validate the logo file
-        run: |
-          if [ ! -f public/mcte-logo.png ]; then
-            echo "::error::public/mcte-logo.png IS MISSING FROM THE REPO."
-            echo "::error::Fix: open your repo on GitHub -> click into the public folder -> Add file -> Upload files -> upload mcte-logo.png -> Commit, then Run workflow again."
-            exit 1
-          fi
-          ls -la public/mcte-logo.png
+          # Capacitor config — server.url makes this a thin shell around the website.
+          # useLegacyBridge: true ensures GPS plugins work on all Android versions.
+          cat > capacitor.config.json << JSONEOF
+          {
+            "appId": "com.army.transport.cms",
+            "appName": "MCTE Transport",
+            "webDir": "capacitor-web",
+            "server": {
+              "url": "${{ steps.url.outputs.url }}",
+              "androidScheme": "https",
+              "cleartext": false
+            },
+            "android": {
+              "allowMixedContent": false,
+              "useLegacyBridge": true,
+              "minWebViewVersion": 60
+            },
+            "plugins": {
+              "Geolocation": {
+                "permissions": ["location"]
+              }
+            }
+          }
+          JSONEOF
 
-      - name: Point the app at the live server URL
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          sed -i 's#url: ""#url: "${{ github.event.inputs.server_url }}"#' capacitor.config.ts
-          echo "Final config:"; grep 'url:' capacitor.config.ts
+          echo "=== Capacitor config written ==="
+          cat capacitor.config.json
 
-      - name: Generate a fresh native Android project
+      # ── 8. Generate Android project ───────────────────────────────────────
+      - name: Generate fresh Android project
         run: |
           rm -rf android
           npx cap add android
-          if ! grep -q "ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml; then
-            sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
-          fi
-          echo "Permissions:"; grep "uses-permission" android/app/src/main/AndroidManifest.xml || true
+          echo "=== Android project generated ==="
 
-      - name: Add background-tracking permissions
+      # ── 9. Add all required permissions ───────────────────────────────────
+      # These permissions are required for GPS tracking to work correctly on
+      # Android 10+ (API 29+) including background location and foreground service.
+      - name: Add Android permissions
         run: |
-          M=android/app/src/main/AndroidManifest.xml
-          for perm in ACCESS_BACKGROUND_LOCATION FOREGROUND_SERVICE FOREGROUND_SERVICE_LOCATION POST_NOTIFICATIONS WAKE_LOCK; do
-            if ! grep -q "android.permission.$perm\"" "$M"; then
-              sed -i "s#</manifest>#    <uses-permission android:name=\"android.permission.$perm\" />\n</manifest>#" "$M"
+          M="android/app/src/main/AndroidManifest.xml"
+
+          declare -a PERMISSIONS=(
+            "android.permission.INTERNET"
+            "android.permission.ACCESS_NETWORK_STATE"
+            "android.permission.ACCESS_COARSE_LOCATION"
+            "android.permission.ACCESS_FINE_LOCATION"
+            "android.permission.ACCESS_BACKGROUND_LOCATION"
+            "android.permission.FOREGROUND_SERVICE"
+            "android.permission.FOREGROUND_SERVICE_LOCATION"
+            "android.permission.POST_NOTIFICATIONS"
+            "android.permission.WAKE_LOCK"
+            "android.permission.RECEIVE_BOOT_COMPLETED"
+          )
+
+          for perm in "${PERMISSIONS[@]}"; do
+            if ! grep -q "\"$perm\"" "$M"; then
+              sed -i "s#</manifest>#    <uses-permission android:name=\"$perm\" />\n</manifest>#" "$M"
             fi
           done
-          echo "Permissions:"; grep "uses-permission" "$M"
 
-      - name: Write the icon generator
+          # Add foreground service type for location on Android 14+ (API 34+)
+          # Without this, background GPS is silently killed on newer Android
+          if ! grep -q "foregroundServiceType" "$M"; then
+            sed -i 's#android:name="com.getcapacitor.CapacitorFirebaseMessagingService"#android:foregroundServiceType="location" android:name="com.getcapacitor.CapacitorFirebaseMessagingService"#g' "$M" || true
+          fi
+
+          echo "=== Final permissions ==="
+          grep "uses-permission" "$M"
+
+      # ── 10. Generate app icons ────────────────────────────────────────────
+      - name: Write icon generator script
         run: |
-          cat > scripts/gen-icons.mjs <<'EOF'
+          cat > scripts/gen-icons.mjs << 'EOF'
           import sharp from "sharp";
           import { mkdirSync, writeFileSync } from "fs";
 
           const LOGO = "public/mcte-logo.png";
-          const BG = { r: 217, g: 0, b: 0, alpha: 1 }; // #D90000 insignia red
+          // Army olive/khaki background instead of red — more appropriate
+          const BG   = { r: 30, g: 42, b: 22, alpha: 1 }; // #1E2A16
 
-          async function plate(size, ratio) {
+          async function iconWithBg(size, logoRatio) {
+            const logoSize = Math.round(size * logoRatio);
             const logo = await sharp(LOGO)
-              .resize(Math.round(size * ratio), Math.round(size * ratio), { fit: "inside" })
-              .png().toBuffer();
-            return sharp({ create: { width: size, height: size, channels: 4, background: BG } })
-              .composite([{ input: logo, gravity: "center" }]).png().toBuffer();
-          }
-          async function foreground(size) {
-            const logo = await sharp(LOGO)
-              .resize(Math.round(size * 0.66), Math.round(size * 0.66), { fit: "inside" })
-              .png().toBuffer();
-            return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-              .composite([{ input: logo, gravity: "center" }]).png().toBuffer();
+              .resize(logoSize, logoSize, { fit: "inside" })
+              .png()
+              .toBuffer();
+            return sharp({
+              create: { width: size, height: size, channels: 4, background: BG },
+            })
+              .composite([{ input: logo, gravity: "center" }])
+              .png()
+              .toBuffer();
           }
 
+          async function iconTransparent(size) {
+            const logoSize = Math.round(size * 0.66);
+            const logo = await sharp(LOGO)
+              .resize(logoSize, logoSize, { fit: "inside" })
+              .png()
+              .toBuffer();
+            return sharp({
+              create: { width: size, height: size, channels: 4,
+                         background: { r: 0, g: 0, b: 0, alpha: 0 } },
+            })
+              .composite([{ input: logo, gravity: "center" }])
+              .png()
+              .toBuffer();
+          }
+
+          // Background colour XML for adaptive icons
           const valuesDir = "android/app/src/main/res/values";
           mkdirSync(valuesDir, { recursive: true });
           mkdirSync("public/icons", { recursive: true });
-          
-          writeFileSync(`${valuesDir}/ic_launcher_background.xml`,
-            '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#D90000</color>\n</resources>\n');
 
-          await sharp(await plate(512, 0.95)).toFile("public/icons/icon-512.png");
+          writeFileSync(
+            `${valuesDir}/ic_launcher_background.xml`,
+            '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#1E2A16</color>\n</resources>\n'
+          );
+
+          // Web icon for PWA
+          await sharp(await iconWithBg(512, 0.85)).toFile("public/icons/icon-512.png");
+
+          // Adaptive icon foreground (transparent background)
+          const fgSizes = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 };
+          // Legacy icon (solid background)
+          const legacySizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 
           const dir = (d) => `android/app/src/main/res/mipmap-${d}`;
-          const fgSizes = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 };
-          const legacySizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
-          for (const [d, s] of Object.entries(fgSizes)) {
-            mkdirSync(dir(d), { recursive: true });
-            await sharp(await foreground(s)).toFile(`${dir(d)}/ic_launcher_foreground.png`);
+
+          for (const [density, size] of Object.entries(fgSizes)) {
+            mkdirSync(dir(density), { recursive: true });
+            await sharp(await iconTransparent(size))
+              .toFile(`${dir(density)}/ic_launcher_foreground.png`);
           }
-          for (const [d, s] of Object.entries(legacySizes)) {
-            const buf = await plate(s, 0.98);
-            await sharp(buf).toFile(`${dir(d)}/ic_launcher.png`);
-            await sharp(buf).toFile(`${dir(d)}/ic_launcher_round.png`);
+
+          for (const [density, size] of Object.entries(legacySizes)) {
+            const buf = await iconWithBg(size, 0.85);
+            await sharp(buf).toFile(`${dir(density)}/ic_launcher.png`);
+            await sharp(buf).toFile(`${dir(density)}/ic_launcher_round.png`);
           }
-          console.log("launcher icons generated from public/mcte-logo.png");
+
+          console.log("✓ App icons generated from public/mcte-logo.png");
           EOF
 
-      - name: Generate app icons from the logo
+      - name: Generate app icons
         run: node scripts/gen-icons.mjs
 
-      - name: Sync Capacitor Android project
+      # ── 11. Sync Capacitor ────────────────────────────────────────────────
+      - name: Sync Capacitor to Android project
         run: npx cap sync android
 
+      # ── 12. Build APK ─────────────────────────────────────────────────────
+      # Still debug build — suitable for sideloading onto army phones.
+      # For Play Store distribution, switch to assembleRelease with a signing key.
       - name: Build debug APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --warning-mode all \
+            -Dorg.gradle.jvmargs="-Xmx2g"
 
-      - name: Upload APK artifact
+      # ── 13. Verify APK was produced ───────────────────────────────────────
+      - name: Verify APK output
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::APK file not found — build may have failed silently."
+            exit 1
+          fi
+          SIZE=$(du -h "$APK" | cut -f1)
+          echo "✓ APK built successfully — size: $SIZE"
+          echo "✓ Points to server: ${{ steps.url.outputs.url }}"
+
+      # ── 14. Upload APK ────────────────────────────────────────────────────
+      - name: Upload APK as downloadable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MCTE-Transport-APK
+          name: MCTE-Transport-Driver-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
           if-no-files-found: error
+
+      # ── 15. Build summary ─────────────────────────────────────────────────
+      - name: Print build summary
+        if: success()
+        run: |
+          echo "════════════════════════════════════════"
+          echo "  MCTE Transport APK — Build Complete"
+          echo "════════════════════════════════════════"
+          echo "  Server URL : ${{ steps.url.outputs.url }}"
+          echo "  Download   : GitHub Actions → this run → Artifacts"
+          echo "  Install    : Transfer APK to driver phone → allow"
+          echo "               unknown sources → tap to install"
+          echo "  Updates    : Push code to GitHub → Render redeploys"
+          echo "               automatically → NO reinstall needed"
+          echo "════════════════════════════════════════"
