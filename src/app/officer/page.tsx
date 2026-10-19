@@ -23,7 +23,7 @@ import MtParkPanel from "@/components/MtParkPanel";
 import ArchivePanel from "@/components/ArchivePanel";
 import CampusMap3D from "@/components/CampusMap3D";
 import { getSession, timeAgo, type Session } from "@/lib/session";
-import { BASE_POS } from "@/lib/simulate";
+import { CAMPUS_PLACES, CAMPUS_VIEW_CENTER } from "@/lib/campusPlaces";
 
 type Live = {
   vehicles: any[];
@@ -156,7 +156,7 @@ export default function OfficerPage() {
                 </h2>
                 <span className="text-[11px] text-[#8b8064] uppercase tracking-wider">auto-refresh 4s</span>
               </div>
-              <MapView className="h-[380px] md:h-[500px]" center={BASE_POS} zoom={13} markers={markers} />
+              <MapView className="h-[380px] md:h-[500px]" center={CAMPUS_VIEW_CENTER} zoom={15} markers={markers} places={CAMPUS_PLACES} />
               <div className="flex flex-wrap gap-4 text-[11px] text-[#a89a76] mt-3">
                 <Legend color="bg-emerald-400" label="Moving (GPS fresh)" />
                 <Legend color="bg-amber-400" label="Stale — no recent fix" />

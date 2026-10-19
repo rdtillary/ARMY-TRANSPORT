@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { CAMPUS_PLACES, PLACE_LABEL_MIN_ZOOM, placeLabelHtml } from "@/lib/campusPlaces";
 
 /**
  * 3D campus map (MapLibre GL + OpenFreeMap vector tiles with extruded
@@ -128,6 +129,26 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
         pin.innerHTML =
           '<div class="vmarker vm-gold vm-pulse"><span class="vdot"></span><span class="vtag">MCTE CAMPUS</span></div>';
         new ml.Marker({ element: pin, anchor: "left" }).setLngLat(CAMPUS_CENTER).addTo(map);
+
+        // Building labels (collapse to dots when zoomed far out)
+        const placeEls: HTMLElement[] = [];
+        for (const pl of CAMPUS_PLACES) {
+          const el = document.createElement("div");
+          el.style.zIndex = "1";
+          el.innerHTML = `<div style="margin-left:-4px">${placeLabelHtml(pl.name, true)}</div>`;
+          new ml.Marker({ element: el, anchor: "left" }).setLngLat([pl.lng, pl.lat]).addTo(map);
+          placeEls.push(el);
+        }
+        let labelsOn = true;
+        map.on("zoom", () => {
+          const on = map.getZoom() >= PLACE_LABEL_MIN_ZOOM;
+          if (on === labelsOn) return;
+          labelsOn = on;
+          for (const el of placeEls) {
+            const text = el.querySelector("[data-place]")?.children[1] as HTMLElement | undefined;
+            if (text) text.style.display = on ? "" : "none";
+          }
+        });
 
         // DEMO camera markers: small dim dot while idle, green pulse on detection
         mlRef.current = ml;

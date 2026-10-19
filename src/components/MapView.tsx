@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, Marker as LeafletMarker, Polyline as LeafletPolyline } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { placeLabelHtml, PLACE_LABEL_MIN_ZOOM, type CampusPlace } from "@/lib/campusPlaces";
 
 export type MapMarker = {
   id: string;
@@ -13,6 +14,7 @@ export type MapMarker = {
   pulse?: boolean;
 };
 
+const NO_PLACES: CampusPlace[] = [];
 const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
 let googlePromise: Promise<any> | null = null;
@@ -54,6 +56,7 @@ export default function MapView({
   zoom = 13,
   className = "h-[420px]",
   followId = null,
+  places = NO_PLACES,
 }: {
   markers?: MapMarker[];
   path?: [number, number][];
@@ -61,6 +64,8 @@ export default function MapView({
   zoom?: number;
   className?: string;
   followId?: string | null;
+  /** Named buildings drawn as labels (collapse to dots when zoomed far out). */
+  places?: CampusPlace[];
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -184,6 +189,86 @@ export default function MapView({
       }
     }
   }, [markers, ready, followId]);
+
+  /* Building / place labels (static). */
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng || places.length === 0) return;
+    const created: any[] = [];
+    let detach: (() => void) | null = null;
+
+    if (eng.kind === "leaflet") {
+      const L = eng.L;
+      const map = eng.map;
+      let showText = map.getZoom() >= PLACE_LABEL_MIN_ZOOM;
+      const iconFor = (name: string, text: boolean) =>
+        L.divIcon({
+          html: `<div style="transform:translate(-4px,-50%)">${placeLabelHtml(name, text)}</div>`,
+          className: "",
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        });
+      for (const pl of places) {
+        const mk = L.marker([pl.lat, pl.lng], {
+          icon: iconFor(pl.name, showText),
+          interactive: false,
+          keyboard: false,
+          zIndexOffset: -1000, // keep vehicles above building labels
+        }).addTo(map);
+        created.push({ mk, name: pl.name });
+      }
+      const onZoom = () => {
+        const next = map.getZoom() >= PLACE_LABEL_MIN_ZOOM;
+        if (next === showText) return;
+        showText = next;
+        for (const c of created) c.mk.setIcon(iconFor(c.name, showText));
+      };
+      map.on("zoomend", onZoom);
+      detach = () => {
+        map.off("zoomend", onZoom);
+        for (const c of created) c.mk.remove();
+      };
+    } else {
+      const g = eng.gmaps;
+      const map = eng.map;
+      const labelFor = (name: string) => ({
+        text: name,
+        color: "#f3e9c0",
+        fontSize: "10px",
+        fontWeight: "800",
+      });
+      const showNow = () => (map.getZoom() ?? 15) >= PLACE_LABEL_MIN_ZOOM;
+      for (const pl of places) {
+        const mk = new g.Marker({
+          position: { lat: pl.lat, lng: pl.lng },
+          map,
+          clickable: false,
+          zIndex: 1,
+          title: pl.name,
+          icon: {
+            path: g.SymbolPath.CIRCLE,
+            scale: 4,
+            fillColor: "#d4c48a",
+            fillOpacity: 1,
+            strokeColor: "#1a1508",
+            strokeWeight: 1.5,
+            labelOrigin: new g.Point(0, -2.6),
+          },
+          label: showNow() ? labelFor(pl.name) : null,
+        });
+        created.push({ mk, name: pl.name });
+      }
+      const l = map.addListener("zoom_changed", () => {
+        const on = showNow();
+        for (const c of created) c.mk.setLabel(on ? labelFor(c.name) : null);
+      });
+      detach = () => {
+        l.remove();
+        for (const c of created) c.mk.setMap(null);
+      };
+    }
+    return () => detach?.();
+  }, [places, ready]);
 
   /* Draw the trip route polyline (archive view). */
   useEffect(() => {
