@@ -47,6 +47,11 @@ const DEMO_VEHICLES = [
 ];
 const DOT_LIFETIME_MS = 8000;
 
+export type TrailStop = { camId: string; cam: string; at: number };
+export type VehicleTrack = { plate: string; token: string; firstSeen: number; lastSeen: number; count: number; trail: TrailStop[] };
+const MAX_TRAIL = 40;
+const hhmmss = (t: number) => new Date(t).toLocaleTimeString("en-GB");
+
 export type Detection = { n: number; camId: string; cam: string; plate: string; token: string; at: number };
 
 let libPromise: Promise<any> | null = null;
@@ -90,6 +95,7 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
   const [flat, setFlat] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [feed, setFeed] = useState<Detection[]>([]);
+  const [tracks, setTracks] = useState<Record<string, VehicleTrack>>({});
   const camMarkers = useRef<Map<string, { el: HTMLDivElement; timer: ReturnType<typeof setTimeout> | null }>>(new Map());
   const mlRef = useRef<any>(null);
 
@@ -189,7 +195,27 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
           m.timer = null;
         }, DOT_LIFETIME_MS);
       }
-      setFeed((f) => [{ n: ++n, camId: cam.id, cam: cam.name, ...veh, at: Date.now() }, ...f].slice(0, 7));
+      const at = Date.now();
+      setFeed((f) => [{ n: ++n, camId: cam.id, cam: cam.name, ...veh, at }, ...f].slice(0, 7));
+      setTracks((all) => {
+        const prev = all[veh.token];
+        const trail = prev ? [...prev.trail] : [];
+        const last = trail[trail.length - 1];
+        // same camera twice in a row = still the same sighting, just refresh its time
+        if (last && last.camId === cam.id) trail[trail.length - 1] = { ...last, at };
+        else trail.push({ camId: cam.id, cam: cam.name, at });
+        return {
+          ...all,
+          [veh.token]: {
+            plate: veh.plate,
+            token: veh.token,
+            firstSeen: prev?.firstSeen ?? at,
+            lastSeen: at,
+            count: (prev?.count ?? 0) + 1,
+            trail: trail.slice(-MAX_TRAIL),
+          },
+        };
+      });
       t = setTimeout(tick, 1200 + Math.random() * 2300);
     };
     t = setTimeout(tick, 800);
@@ -209,7 +235,10 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
     mapRef.current?.easeTo({ pitch: next ? 0 : HOME_VIEW.pitch, bearing: next ? 0 : HOME_VIEW.bearing, duration: 700 });
   };
 
+  const vehicles = Object.values(tracks).sort((a, b) => b.lastSeen - a.lastSeen);
+
   return (
+    <div>
     <div className={`relative rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#0d120b] ${className}`}>
       {/* Inline style on purpose: MapLibre's own CSS sets .maplibregl-map{position:relative},
           which would beat a Tailwind class and collapse the container to zero height. */}
@@ -264,6 +293,66 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
           3D map unavailable — {error}
         </div>
       )}
+    </div>
+
+    {/* Detected vehicles + camera trail */}
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs md:text-sm font-extrabold uppercase tracking-wider text-[#d4c48a]">
+          Detected vehicles <span className="text-[#8b8064]">({vehicles.length})</span>
+        </h3>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300 border border-amber-400/40 rounded px-1.5 py-0.5">
+          Demo data
+        </span>
+      </div>
+      {vehicles.length === 0 ? (
+        <p className="text-xs text-[#8b8064] bg-[#0e1409]/60 border border-[#8b6f2e]/20 rounded-xl p-4">
+          No vehicle detected yet…
+        </p>
+      ) : (
+        <ul className="grid gap-2.5 md:grid-cols-2">
+          {vehicles.map((v) => {
+            const live = Date.now() - v.lastSeen < DOT_LIFETIME_MS;
+            const hidden = v.trail.length > 12 ? v.trail.length - 12 : 0;
+            const shown = hidden ? v.trail.slice(-12) : v.trail;
+            return (
+              <li key={v.token} className="bg-[#0e1409]/70 border border-[#8b6f2e]/25 rounded-xl p-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${live ? "bg-emerald-400" : "bg-[#5d573f]"}`} />
+                  <span className="text-sm font-extrabold tracking-wide text-[#eee8d0]">{v.plate}</span>
+                  <span className="text-[10px] font-bold text-[#8b8064]">{v.token}</span>
+                  <span className="ml-auto text-[10px] text-[#8b8064]">
+                    last seen {hhmmss(v.lastSeen)} · {v.count} detections
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-1.5">
+                  {hidden > 0 && <span className="text-[10px] text-[#8b8064]">+{hidden} earlier →</span>}
+                  {shown.map((t, i) => {
+                    const isLast = i === shown.length - 1;
+                    return (
+                      <span key={`${t.camId}-${t.at}`} className="flex items-center gap-1">
+                        <span
+                          title={`${t.camId} · ${hhmmss(t.at)}`}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                            isLast
+                              ? "bg-emerald-400/15 border-emerald-400/60 text-emerald-300"
+                              : "bg-[#141b10] border-[#8b6f2e]/30 text-[#b5aa88]"
+                          }`}
+                        >
+                          {t.cam}
+                          <i className="not-italic font-normal text-[9px] opacity-70 ml-1">{hhmmss(t.at)}</i>
+                        </span>
+                        {!isLast && <span className="text-[#5d573f] text-[10px]">→</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
     </div>
   );
 }
