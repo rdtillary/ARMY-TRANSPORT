@@ -136,7 +136,11 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
         }
         setMapReady(true);
 
-        map.on("load", () => !cancelled && setLoading(false));
+        map.on("load", () => {
+          if (cancelled) return;
+          map.resize();
+          setLoading(false);
+        });
         map.on("error", (e: any) => {
           // Tile/style failures: surface them only if the map never came up.
           if (!map.isStyleLoaded() && !cancelled) {
@@ -207,7 +211,9 @@ export default function CampusMap3D({ className = "h-[70vh] min-h-[420px]" }: { 
 
   return (
     <div className={`relative rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#0d120b] ${className}`}>
-      <div ref={elRef} className="absolute inset-0" />
+      {/* Inline style on purpose: MapLibre's own CSS sets .maplibregl-map{position:relative},
+          which would beat a Tailwind class and collapse the container to zero height. */}
+      <div ref={elRef} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
 
       <div className="absolute top-3 left-3 z-10 flex gap-2">
         <button
