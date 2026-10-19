@@ -14,12 +14,14 @@ import {
   Activity,
   Users,
   Archive as ArchiveIcon,
+  MapPin,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
 import AdminPanel from "@/components/AdminPanel";
 import MtParkPanel from "@/components/MtParkPanel";
 import ArchivePanel from "@/components/ArchivePanel";
+import CampusMap3D from "@/components/CampusMap3D";
 import { getSession, timeAgo, type Session } from "@/lib/session";
 import { BASE_POS } from "@/lib/simulate";
 
@@ -30,7 +32,7 @@ type Live = {
   totalVehicles: number;
 };
 
-type Tab = "live" | "admin" | "archive";
+type Tab = "live" | "admin" | "archive" | "campus";
 
 export default function OfficerPage() {
   const router = useRouter();
@@ -109,6 +111,7 @@ export default function OfficerPage() {
     { id: "live", label: "Live Control", icon: Radar },
     { id: "admin", label: "Personnel & Fleet", icon: Users },
     { id: "archive", label: "Archive", icon: ArchiveIcon },
+    { id: "campus", label: "Campus", icon: MapPin },
   ];
 
   return (
@@ -257,6 +260,19 @@ export default function OfficerPage() {
 
         {tab === "admin" && <AdminPanel />}
         {tab === "archive" && <ArchivePanel />}
+        {tab === "campus" && (
+          <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4 md:p-5">
+            <div className="mb-3">
+              <h2 className="text-sm md:text-base font-extrabold uppercase tracking-wider text-[#d4c48a]">
+                Campus — 3D View
+              </h2>
+              <p className="text-[11px] text-[#8b8064] mt-0.5">
+                22°32&apos;09.3&quot;N 75°45&apos;37.6&quot;E · drag to pan, right-drag or Ctrl+drag to tilt and rotate
+              </p>
+            </div>
+            <CampusMap3D />
+          </div>
+        )}
       </main>
     </div>
   );
