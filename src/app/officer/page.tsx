@@ -2,28 +2,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Radar,
-  AlertTriangle,
-  Siren,
-  Flag,
-  Truck,
-  Send,
-  CheckCircle2,
-  Radio,
-  Gauge,
-  Activity,
-  Users,
-  Archive as ArchiveIcon,
-  MapPin,
+  Radar, AlertTriangle, Siren, Flag, Truck,
+  Send, CheckCircle2, Radio, Gauge, Activity,
+  Users, Archive as ArchiveIcon, UserCheck,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
 import AdminPanel from "@/components/AdminPanel";
 import MtParkPanel from "@/components/MtParkPanel";
 import ArchivePanel from "@/components/ArchivePanel";
-import CampusMap3D from "@/components/CampusMap3D";
+import DriversPanel from "@/components/DriversPanel";
 import { getSession, timeAgo, type Session } from "@/lib/session";
-import { CAMPUS_PLACES, CAMPUS_VIEW_CENTER } from "@/lib/campusPlaces";
+import { BASE_POS } from "@/lib/simulate";
 
 type Live = {
   vehicles: any[];
@@ -32,7 +22,7 @@ type Live = {
   totalVehicles: number;
 };
 
-type Tab = "live" | "admin" | "archive" | "campus";
+type Tab = "live" | "admin" | "drivers" | "archive";
 
 export default function OfficerPage() {
   const router = useRouter();
@@ -46,14 +36,10 @@ export default function OfficerPage() {
 
   useEffect(() => {
     const s = getSession();
-    if (!s || s.role !== "officer") {
-      router.replace("/");
-      return;
-    }
+    if (!s || s.role !== "officer") { router.replace("/"); return; }
     setSession(s);
   }, [router]);
 
-  /* Live fleet polling — keeps running regardless of the open tab. */
   useEffect(() => {
     let on = true;
     const load = () =>
@@ -64,11 +50,7 @@ export default function OfficerPage() {
     load();
     const t = setInterval(load, 4000);
     const c = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      on = false;
-      clearInterval(t);
-      clearInterval(c);
-    };
+    return () => { on = false; clearInterval(t); clearInterval(c); };
   }, []);
 
   const resolveAlert = async (id: number) => {
@@ -86,8 +68,7 @@ export default function OfficerPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fromName: session.name, to, message: msg.trim() }),
     });
-    setMsg("");
-    setSent(true);
+    setMsg(""); setSent(true);
     setTimeout(() => setSent(false), 2000);
   };
 
@@ -99,8 +80,7 @@ export default function OfficerPage() {
 
   const markers: MapMarker[] = vs.map((v) => ({
     id: String(v.tripId),
-    lat: v.lat,
-    lng: v.lng,
+    lat: v.lat, lng: v.lng,
     label: v.regNo,
     sub: v.speed != null ? `${Math.round(v.speed)} km/h` : "no fix",
     color: v.status === "sos" ? "red" : v.status === "moving" ? "green" : "amber",
@@ -108,10 +88,10 @@ export default function OfficerPage() {
   }));
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
-    { id: "live", label: "Live Control", icon: Radar },
-    { id: "admin", label: "Personnel & Fleet", icon: Users },
-    { id: "archive", label: "Archive", icon: ArchiveIcon },
-    { id: "campus", label: "Campus", icon: MapPin },
+    { id: "live",    label: "Live Control",       icon: Radar      },
+    { id: "admin",   label: "Personnel & Fleet",  icon: Users      },
+    { id: "drivers", label: "Drivers",            icon: UserCheck  },
+    { id: "archive", label: "Archive",            icon: ArchiveIcon },
   ];
 
   return (
@@ -140,7 +120,6 @@ export default function OfficerPage() {
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-5">
         {tab === "live" && (
           <>
-            {/* Stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat icon={Truck} label="Active vehicles" value={String(vs.length)} sub={`of ${live?.totalVehicles ?? 0} in fleet`} tone="text-[#d4c48a]" />
               <Stat icon={Activity} label="Trips completed today" value={String(live?.completedToday ?? 0)} sub="since 00:00 hrs" tone="text-emerald-300" />
@@ -148,7 +127,6 @@ export default function OfficerPage() {
               <Stat icon={Flag} label="Open alerts" value={String(alerts.length)} sub="flags & escalations" tone={alerts.length ? "text-amber-300" : "text-[#8b8064]"} />
             </div>
 
-            {/* Live map on top */}
             <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4 md:p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-extrabold flex items-center gap-2">
@@ -156,7 +134,7 @@ export default function OfficerPage() {
                 </h2>
                 <span className="text-[11px] text-[#8b8064] uppercase tracking-wider">auto-refresh 4s</span>
               </div>
-              <MapView className="h-[380px] md:h-[500px]" center={CAMPUS_VIEW_CENTER} zoom={15} markers={markers} places={CAMPUS_PLACES} />
+              <MapView className="h-[380px] md:h-[500px]" center={BASE_POS} zoom={13} markers={markers} />
               <div className="flex flex-wrap gap-4 text-[11px] text-[#a89a76] mt-3">
                 <Legend color="bg-emerald-400" label="Moving (GPS fresh)" />
                 <Legend color="bg-amber-400" label="Stale — no recent fix" />
@@ -164,10 +142,8 @@ export default function OfficerPage() {
               </div>
             </div>
 
-            {/* MT Park gate operations */}
             <MtParkPanel />
 
-            {/* Command panels */}
             <div className="grid lg:grid-cols-3 gap-5">
               {/* Alerts */}
               <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4">
@@ -181,12 +157,15 @@ export default function OfficerPage() {
                   {alerts.map((a) => (
                     <div key={a.id} className={`rounded-xl border px-3 py-2.5 ${a.kind === "sos" ? "bg-rose-950/40 border-rose-700/50" : "bg-[#141c0e] border-[#8b6f2e]/20"}`}>
                       <div className="flex items-start gap-2">
-                        {a.kind === "sos" ? <Siren size={15} className="text-rose-300 mt-0.5 shrink-0 animate-pulse" /> : <Flag size={15} className="text-amber-300 mt-0.5 shrink-0" />}
+                        {a.kind === "sos"
+                          ? <Siren size={15} className="text-rose-300 mt-0.5 shrink-0 animate-pulse" />
+                          : <Flag size={15} className="text-amber-300 mt-0.5 shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold leading-snug">{a.message}</p>
                           <p className="text-[10px] text-[#8b8064] mt-1">{a.kind.toUpperCase()} • {timeAgo(a.ts, now)}</p>
                         </div>
-                        <button onClick={() => resolveAlert(a.id)} className="text-[10px] font-extrabold text-emerald-300 border border-emerald-600/40 rounded-md px-2 py-1 hover:bg-emerald-900/30 shrink-0">
+                        <button onClick={() => resolveAlert(a.id)}
+                          className="text-[10px] font-extrabold text-emerald-300 border border-emerald-600/40 rounded-md px-2 py-1 hover:bg-emerald-900/30 shrink-0">
                           ACK
                         </button>
                       </div>
@@ -228,28 +207,20 @@ export default function OfficerPage() {
                 <h3 className="text-sm font-extrabold tracking-widest text-[#d4c48a] flex items-center gap-2 mb-3">
                   <Radio size={15} /> BROADCAST ORDER
                 </h3>
-                <select
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="w-full bg-[#141c0e] border border-[#8b6f2e]/30 rounded-lg px-2.5 py-2 text-xs font-bold focus:outline-none focus:border-[#c0a86c] mb-2"
-                >
+                <select value={to} onChange={(e) => setTo(e.target.value)}
+                  className="w-full bg-[#141c0e] border border-[#8b6f2e]/30 rounded-lg px-2.5 py-2 text-xs font-bold focus:outline-none focus:border-[#c0a86c] mb-2">
                   <option value="jco">To: JCO terminals</option>
                   <option value="driver">To: Drivers</option>
                   <option value="all">To: All units</option>
                 </select>
                 <div className="flex gap-2">
-                  <input
-                    value={msg}
-                    onChange={(e) => setMsg(e.target.value)}
+                  <input value={msg} onChange={(e) => setMsg(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && sendBroadcast()}
                     placeholder="Type instruction…"
                     className="flex-1 min-w-0 bg-[#141c0e] border border-[#8b6f2e]/30 rounded-lg px-3 py-2 text-xs placeholder:text-[#5d573f] focus:outline-none focus:border-[#c0a86c]"
                   />
-                  <button
-                    onClick={sendBroadcast}
-                    disabled={!msg.trim()}
-                    className="px-3 rounded-lg bg-[#8b6f2e] text-[#1a1508] font-extrabold hover:brightness-110 disabled:opacity-35 transition flex items-center gap-1.5 text-xs"
-                  >
+                  <button onClick={sendBroadcast} disabled={!msg.trim()}
+                    className="px-3 rounded-lg bg-[#8b6f2e] text-[#1a1508] font-extrabold hover:brightness-110 disabled:opacity-35 transition flex items-center gap-1.5 text-xs">
                     {sent ? <CheckCircle2 size={14} /> : <Send size={14} />} SEND
                   </button>
                 </div>
@@ -258,21 +229,9 @@ export default function OfficerPage() {
           </>
         )}
 
-        {tab === "admin" && <AdminPanel />}
+        {tab === "admin"   && <AdminPanel />}
+        {tab === "drivers" && <DriversPanel />}
         {tab === "archive" && <ArchivePanel />}
-        {tab === "campus" && (
-          <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4 md:p-5">
-            <div className="mb-3">
-              <h2 className="text-sm md:text-base font-extrabold uppercase tracking-wider text-[#d4c48a]">
-                Campus — 3D View
-              </h2>
-              <p className="text-[11px] text-[#8b8064] mt-0.5">
-                22°32&apos;09.3&quot;N 75°45&apos;37.6&quot;E · drag to pan, right-drag or Ctrl+drag to tilt and rotate
-              </p>
-            </div>
-            <CampusMap3D />
-          </div>
-        )}
       </main>
     </div>
   );
@@ -301,8 +260,8 @@ function Legend({ color, label }: { color: string; label: string }) {
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     moving: "text-emerald-300 border-emerald-600/40 bg-emerald-950/40",
-    stale: "text-amber-300 border-amber-600/40 bg-amber-950/40",
-    sos: "text-rose-300 border-rose-600/50 bg-rose-950/40 animate-pulse",
+    stale:  "text-amber-300 border-amber-600/40 bg-amber-950/40",
+    sos:    "text-rose-300 border-rose-600/50 bg-rose-950/40 animate-pulse",
   };
   return (
     <span className={`text-[10px] font-extrabold uppercase tracking-wider border rounded-md px-1.5 py-0.5 ${map[status] || map.stale}`}>
