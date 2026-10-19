@@ -3,12 +3,16 @@ import { db } from "@/db";
 import { ensureSchema } from "@/db/migrate";
 import { users } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { requireRole, hashPassword } from "@/lib/auth";
 
 const ROLES = ["officer", "jco", "driver"] as const;
 type Role = (typeof ROLES)[number];
 
-/** GET /api/users → all accounts (passwords are never returned). */
-export async function GET() {
+/** GET /api/users → all accounts (passwords are never returned). Admin only. */
+export async function GET(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   await ensureSchema();
   const rows = await db
     .select({
@@ -24,12 +28,15 @@ export async function GET() {
 }
 
 /**
- * POST /api/users
+ * POST /api/users  (Admin only)
  *   single: {name, role, serviceNo, unit, password?}
  *   bulk:   {bulk: "role,serviceNo,name,unit\n..."}  (one person per line,
  *           password defaults to army123; lines starting with # are ignored)
  */
 export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   await ensureSchema();
   const body = await req.json().catch(() => ({}));
 
@@ -59,11 +66,27 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, user: res.user });
 }
 
-/** DELETE /api/users?id=.. */
+/** DELETE /api/users?id=..  (Admin only) */
 export async function DELETE(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   await ensureSchema();
   const id = Number(new URL(req.url).searchParams.get("id") || 0);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  if (id === a.user.id) {
+    return NextResponse.json({ error: "You cannot delete your own account" }, { status: 400 });
+  }
+
+  const [target] = await db.select().from(users).where(eq(users.id, id));
+  if (target?.role === "officer") {
+    const officers = await db.select({ id: users.id }).from(users).where(eq(users.role, "officer"));
+    if (officers.length <= 1) {
+      return NextResponse.json({ error: "Cannot delete the last admin" }, { status: 409 });
+    }
+  }
+
   try {
     await db.delete(users).where(eq(users.id, id));
     return NextResponse.json({ ok: true });
@@ -93,7 +116,7 @@ async function createOne(b: any): Promise<any> {
 
   const [u] = await db
     .insert(users)
-    .values({ name, role, serviceNo, unit, password })
+    .values({ name, role, serviceNo, unit, password: hashPassword(password) })
     .returning({
       id: users.id,
       name: users.name,

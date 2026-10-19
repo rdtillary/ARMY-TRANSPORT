@@ -4,6 +4,7 @@ export type Session = {
   role: "officer" | "jco" | "driver";
   unit: string;
   serviceNo: string;
+  token?: string;
 };
 
 const KEY = "atc_session";
@@ -26,6 +27,7 @@ export function saveSession(s: Session) {
 export function clearSession() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
+  void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
 }
 
 export function timeAgo(ts: string | number, now: number = Date.now()): string {

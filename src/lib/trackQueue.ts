@@ -1,5 +1,6 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import type { GeoPos } from "./geo";
+import { getSession } from "./session";
 
 /**
  * Offline-safe position uploader.
@@ -35,18 +36,24 @@ function save(tripId: number, q: GeoPos[]) {
 
 async function post(body: unknown): Promise<number> {
   const url = `${window.location.origin}/api/trips/track`;
+
+  // Login token: native HTTP does not share the WebView cookie, so send it as a header.
+  const token = getSession()?.token;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   // Native HTTP is not throttled by Android when the WebView is in the background.
   if (Capacitor.isNativePlatform()) {
     const r = await CapacitorHttp.post({
       url,
-      headers: { "Content-Type": "application/json" },
+      headers,
       data: body,
     });
     return r.status;
   }
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     keepalive: true,
   });
@@ -80,7 +87,7 @@ export async function flush(tripId: number): Promise<void> {
         save(tripId, []); // trip already ended — nothing left to report
         return;
       } else {
-        return; // server error — retry later
+        return; // server error (or 401 not logged in) — retry later
       }
     }
   } finally {
