@@ -1,21 +1,17 @@
 import {
-  pgTable,
-  serial,
-  text,
-  integer,
-  doublePrecision,
-  timestamp,
-  boolean,
-  date,
+  pgTable, serial, text, integer, doublePrecision,
+  timestamp, boolean, date,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  role: text("role").notNull(), // 'officer' | 'jco' | 'driver'
+  role: text("role").notNull(),
   serviceNo: text("service_no").notNull().unique(),
   unit: text("unit").notNull(),
   password: text("password").notNull(),
+  // Driver photo stored as base64 data URL (same pattern as gate photos)
+  photoUrl: text("photo_url"),
 });
 
 export const vehicles = pgTable("vehicles", {
@@ -26,20 +22,17 @@ export const vehicles = pgTable("vehicles", {
   fuelPct: integer("fuel_pct").notNull().default(80),
   mileage: integer("mileage").notNull().default(0),
   maintenanceDue: date("maintenance_due"),
-  status: text("status").notNull().default("available"), // available | active | maintenance
-  // MT Park gate state
-  parkStatus: text("park_status").notNull().default("in"), // in | out
-  pendingStopAt: timestamp("pending_stop_at"), // scan-IN with tracking on → auto-stop deadline
+  status: text("status").notNull().default("available"),
+  parkStatus: text("park_status").notNull().default("in"),
+  pendingStopAt: timestamp("pending_stop_at"),
 });
 
 export const gateEvents = pgTable("gate_events", {
   id: serial("id").primaryKey(),
-  vehicleId: integer("vehicle_id")
-    .notNull()
-    .references(() => vehicles.id),
-  direction: text("direction").notNull(), // in | out
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
+  direction: text("direction").notNull(),
   photoUrl: text("photo_url").notNull(),
-  plateText: text("plate_text").notNull(), // ANPR reading
+  plateText: text("plate_text").notNull(),
   confidence: doublePrecision("confidence").notNull().default(98),
   driverId: integer("driver_id").references(() => users.id),
   ts: timestamp("ts").notNull().defaultNow(),
@@ -47,10 +40,10 @@ export const gateEvents = pgTable("gate_events", {
 
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
-  target: text("target").notNull(), // admin | jco | driver:<id> | all
+  target: text("target").notNull(),
   title: text("title").notNull(),
   message: text("message").notNull(),
-  kind: text("kind").notNull().default("info"), // info | alarm
+  kind: text("kind").notNull().default("info"),
   vehicleId: integer("vehicle_id"),
   tripId: integer("trip_id"),
   ts: timestamp("ts").notNull().defaultNow(),
@@ -59,7 +52,7 @@ export const notifications = pgTable("notifications", {
 
 export const incidents = pgTable("incidents", {
   id: serial("id").primaryKey(),
-  kind: text("kind").notNull(), // tracking_off_out | tracking_on_in | stopped_out
+  kind: text("kind").notNull(),
   message: text("message").notNull(),
   vehicleId: integer("vehicle_id").notNull(),
   tripId: integer("trip_id"),
@@ -72,25 +65,17 @@ export const incidents = pgTable("incidents", {
 
 export const trips = pgTable("trips", {
   id: serial("id").primaryKey(),
-  driverId: integer("driver_id")
-    .notNull()
-    .references(() => users.id),
-  vehicleId: integer("vehicle_id")
-    .notNull()
-    .references(() => vehicles.id),
+  driverId: integer("driver_id").notNull().references(() => users.id),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
-  status: text("status").notNull().default("active"), // active | completed
+  status: text("status").notNull().default("active"),
 });
 
 export const positions = pgTable("positions", {
   id: serial("id").primaryKey(),
-  tripId: integer("trip_id")
-    .notNull()
-    .references(() => trips.id),
-  vehicleId: integer("vehicle_id")
-    .notNull()
-    .references(() => vehicles.id),
+  tripId: integer("trip_id").notNull().references(() => trips.id),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
   lat: doublePrecision("lat").notNull(),
   lng: doublePrecision("lng").notNull(),
   speed: doublePrecision("speed"),
@@ -101,9 +86,7 @@ export const positions = pgTable("positions", {
 
 export const checkpoints = pgTable("checkpoints", {
   id: serial("id").primaryKey(),
-  tripId: integer("trip_id")
-    .notNull()
-    .references(() => trips.id),
+  tripId: integer("trip_id").notNull().references(() => trips.id),
   lat: doublePrecision("lat"),
   lng: doublePrecision("lng"),
   note: text("note"),
@@ -112,7 +95,7 @@ export const checkpoints = pgTable("checkpoints", {
 
 export const alerts = pgTable("alerts", {
   id: serial("id").primaryKey(),
-  kind: text("kind").notNull(), // sos | flag | delay | breakdown
+  kind: text("kind").notNull(),
   message: text("message").notNull(),
   tripId: integer("trip_id").references(() => trips.id),
   vehicleId: integer("vehicle_id").references(() => vehicles.id),
@@ -124,7 +107,7 @@ export const alerts = pgTable("alerts", {
 export const broadcasts = pgTable("broadcasts", {
   id: serial("id").primaryKey(),
   fromName: text("from_name").notNull(),
-  to: text("to").notNull(), // jco | driver | all
+  to: text("to").notNull(),
   message: text("message").notNull(),
   ts: timestamp("ts").notNull().defaultNow(),
 });
