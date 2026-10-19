@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { ensureSchema } from "@/db/migrate";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Enter service number and password" }, { status: 400 });
   }
 
+  await ensureSchema();
   const rows = await db.select().from(users).where(eq(users.serviceNo, serviceNo));
   const u = rows.find((x) => x.password === password);
   if (!u) return NextResponse.json({ error: "Invalid service number or password" }, { status: 401 });

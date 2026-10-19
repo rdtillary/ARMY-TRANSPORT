@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Radar, AlertTriangle, Siren, Flag, Truck,
   Send, CheckCircle2, Radio, Gauge, Activity,
-  Users, Archive as ArchiveIcon, UserCheck,
+  Users, Archive as ArchiveIcon, UserCheck, MapPin,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
@@ -12,8 +12,9 @@ import AdminPanel from "@/components/AdminPanel";
 import MtParkPanel from "@/components/MtParkPanel";
 import ArchivePanel from "@/components/ArchivePanel";
 import DriversPanel from "@/components/DriversPanel";
+import CampusMap3D from "@/components/CampusMap3D";
 import { getSession, timeAgo, type Session } from "@/lib/session";
-import { BASE_POS } from "@/lib/simulate";
+import { CAMPUS_PLACES, CAMPUS_VIEW_CENTER } from "@/lib/campusPlaces";
 
 type Live = {
   vehicles: any[];
@@ -22,7 +23,7 @@ type Live = {
   totalVehicles: number;
 };
 
-type Tab = "live" | "admin" | "drivers" | "archive";
+type Tab = "live" | "admin" | "drivers" | "archive" | "campus";
 
 export default function OfficerPage() {
   const router = useRouter();
@@ -92,6 +93,7 @@ export default function OfficerPage() {
     { id: "admin",   label: "Personnel & Fleet",  icon: Users      },
     { id: "drivers", label: "Drivers",            icon: UserCheck  },
     { id: "archive", label: "Archive",            icon: ArchiveIcon },
+    { id: "campus",  label: "Campus",             icon: MapPin     },
   ];
 
   return (
@@ -134,7 +136,7 @@ export default function OfficerPage() {
                 </h2>
                 <span className="text-[11px] text-[#8b8064] uppercase tracking-wider">auto-refresh 4s</span>
               </div>
-              <MapView className="h-[380px] md:h-[500px]" center={BASE_POS} zoom={13} markers={markers} />
+              <MapView className="h-[380px] md:h-[500px]" center={CAMPUS_VIEW_CENTER} zoom={15} markers={markers} places={CAMPUS_PLACES} />
               <div className="flex flex-wrap gap-4 text-[11px] text-[#a89a76] mt-3">
                 <Legend color="bg-emerald-400" label="Moving (GPS fresh)" />
                 <Legend color="bg-amber-400" label="Stale — no recent fix" />
@@ -232,6 +234,19 @@ export default function OfficerPage() {
         {tab === "admin"   && <AdminPanel />}
         {tab === "drivers" && <DriversPanel />}
         {tab === "archive" && <ArchivePanel />}
+        {tab === "campus" && (
+          <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4 md:p-5">
+            <div className="mb-3">
+              <h2 className="text-sm md:text-base font-extrabold uppercase tracking-wider text-[#d4c48a]">
+                Campus — 3D View
+              </h2>
+              <p className="text-[11px] text-[#8b8064] mt-0.5">
+                22°32&apos;09.3&quot;N 75°45&apos;37.6&quot;E · drag to pan, right-drag or Ctrl+drag to tilt and rotate
+              </p>
+            </div>
+            <CampusMap3D />
+          </div>
+        )}
       </main>
     </div>
   );

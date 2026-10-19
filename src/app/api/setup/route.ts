@@ -64,6 +64,7 @@ const DDL = [
     message text not null,
     ts timestamptz not null default now()
   )`,
+  `alter table users add column if not exists photo_url text`,
   // --- MT Park operations ---
   `alter table vehicles add column if not exists park_status text not null default 'in'`,
   `alter table vehicles add column if not exists pending_stop_at timestamptz`,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
+import { ensureSchema } from "@/db/migrate";
 import { users } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 
@@ -8,6 +9,7 @@ type Role = (typeof ROLES)[number];
 
 /** GET /api/users → all accounts (passwords are never returned). */
 export async function GET() {
+  await ensureSchema();
   const rows = await db
     .select({
       id: users.id,
@@ -28,6 +30,7 @@ export async function GET() {
  *           password defaults to army123; lines starting with # are ignored)
  */
 export async function POST(req: Request) {
+  await ensureSchema();
   const body = await req.json().catch(() => ({}));
 
   if (typeof body.bulk === "string" && body.bulk.trim()) {
@@ -58,6 +61,7 @@ export async function POST(req: Request) {
 
 /** DELETE /api/users?id=.. */
 export async function DELETE(req: Request) {
+  await ensureSchema();
   const id = Number(new URL(req.url).searchParams.get("id") || 0);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   try {

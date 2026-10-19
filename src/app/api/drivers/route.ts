@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, trips, vehicles } from "@/db/schema";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
+import { ensureSchema } from "@/db/migrate";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
+    await ensureSchema();
     // Get all drivers
     const drivers = await db
       .select({
@@ -74,6 +76,7 @@ export async function GET() {
  */
 export async function PATCH(req: Request) {
   try {
+    await ensureSchema();
     const body = await req.json().catch(() => ({}));
     const driverId = Number(body.driverId || 0);
     const photoUrl = String(body.photoUrl || "").trim();

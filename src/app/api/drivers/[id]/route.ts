@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, trips, vehicles } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { ensureSchema } from "@/db/migrate";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function GET(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  await ensureSchema();
   const { id } = await ctx.params;
   const driverId = Number(id);
   if (!driverId) return NextResponse.json({ error: "bad driver id" }, { status: 400 });
