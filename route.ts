@@ -1,128 +1,156 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { ensureSchema } from "@/db/migrate";
-import { users } from "@/db/schema";
-import { eq, asc } from "drizzle-orm";
-import { requireRole, hashPassword } from "@/lib/auth";
+import {
+  trips, vehicles, users, positions, gateEvents, incidents, checkpoints, alerts,
+} from "@/db/schema";
+import { eq, and, asc, gte, lte } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
-const ROLES = ["officer", "jco", "driver"] as const;
-type Role = (typeof ROLES)[number];
+export const dynamic = "force-dynamic";
 
-/** GET /api/users → all accounts (passwords are never returned). Admin only. */
-export async function GET(req: Request) {
-  const a = requireRole(req, "officer");
-  if ("error" in a) return a.error;
+/** GET /api/trips/:id — full trip record: route points, gate photos, incidents. */
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const tripId = Number(id);
+  if (!tripId) return NextResponse.json({ error: "bad trip id" }, { status: 400 });
 
-  await ensureSchema();
-  const rows = await db
+  const head = await db
     .select({
-      id: users.id,
-      name: users.name,
-      role: users.role,
-      serviceNo: users.serviceNo,
-      unit: users.unit,
+      tripId: trips.id,
+      status: trips.status,
+      startedAt: trips.startedAt,
+      endedAt: trips.endedAt,
+      regNo: vehicles.regNo,
+      type: vehicles.type,
+      unit: vehicles.unit,
+      driverName: users.name,
+      driverServiceNo: users.serviceNo,
+      driverUnit: users.unit,
     })
-    .from(users)
-    .orderBy(asc(users.role), asc(users.serviceNo));
-  return NextResponse.json({ users: rows });
+    .from(trips)
+    .innerJoin(vehicles, eq(trips.vehicleId, vehicles.id))
+    .innerJoin(users, eq(trips.driverId, users.id))
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (!head.length) return NextResponse.json({ error: "trip not found" }, { status: 404 });
+  const t = head[0];
+
+  const allPts = await db
+    .select({ lat: positions.lat, lng: positions.lng, speed: positions.speed, ts: positions.ts })
+    .from(positions)
+    .where(eq(positions.tripId, tripId))
+    .orderBy(asc(positions.ts), asc(positions.id));
+
+  // Decimate to at most 400 points for the map.
+  const stride = Math.max(1, Math.ceil(allPts.length / 400));
+  const path = allPts.filter((_, i) => i % stride === 0 || i === allPts.length - 1);
+
+  const maxSpeed = allPts.reduce((m, p) => Math.max(m, p.speed || 0), 0);
+  const distanceKm = path.reduce((acc, p, i) => {
+    if (i === 0) return 0;
+    const a = path[i - 1];
+    return acc + haversine(a.lat, a.lng, p.lat, p.lng);
+  }, 0);
+
+  // Gate scans for the trip's vehicle within its time window (+/- 5 min).
+  const start = new Date(t.startedAt.getTime() - 5 * 60 * 1000);
+  const end = t.endedAt ? new Date(t.endedAt.getTime() + 5 * 60 * 1000) : new Date();
+  const tripVehicleId = await db
+    .select({ vehicleId: trips.vehicleId })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  const vid = tripVehicleId[0]?.vehicleId;
+  const gates = vid
+    ? await db
+        .select({
+          id: gateEvents.id,
+          direction: gateEvents.direction,
+          photoUrl: gateEvents.photoUrl,
+          plateText: gateEvents.plateText,
+          confidence: gateEvents.confidence,
+          ts: gateEvents.ts,
+        })
+        .from(gateEvents)
+        .where(
+          and(
+            eq(gateEvents.vehicleId, vid),
+            gte(gateEvents.ts, start),
+            lte(gateEvents.ts, end)
+          )
+        )
+        .orderBy(asc(gateEvents.ts))
+    : [];
+
+  const tripIncidents = await db
+    .select({
+      id: incidents.id,
+      kind: incidents.kind,
+      message: incidents.message,
+      ts: incidents.ts,
+      resolved: incidents.resolved,
+    })
+    .from(incidents)
+    .where(eq(incidents.tripId, tripId))
+    .orderBy(asc(incidents.ts));
+
+  return NextResponse.json({
+    trip: {
+      ...t,
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      maxSpeedKmh: Math.round(maxSpeed),
+      pointCount: allPts.length,
+      durationSec:
+        t.endedAt && t.startedAt
+          ? Math.round((t.endedAt.getTime() - t.startedAt.getTime()) / 1000)
+          : Math.round((Date.now() - t.startedAt.getTime()) / 1000),
+    },
+    path,
+    gates,
+    incidents: tripIncidents,
+  });
 }
 
-/**
- * POST /api/users  (Admin only)
- *   single: {name, role, serviceNo, unit, password?}
- *   bulk:   {bulk: "role,serviceNo,name,unit\n..."}  (one person per line,
- *           password defaults to army123; lines starting with # are ignored)
- */
-export async function POST(req: Request) {
-  const a = requireRole(req, "officer");
-  if ("error" in a) return a.error;
+/** DELETE /api/trips/:id — Admin only. Removes a completed trip and its records. */
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = requireRole(req, "officer");
+  if ("error" in auth) return auth.error;
 
-  await ensureSchema();
-  const body = await req.json().catch(() => ({}));
+  const { id } = await ctx.params;
+  const tripId = Number(id);
+  if (!tripId) return NextResponse.json({ error: "bad trip id" }, { status: 400 });
 
-  if (typeof body.bulk === "string" && body.bulk.trim()) {
-    const created: any[] = [];
-    const errors: string[] = [];
-    for (const raw of body.bulk.split(/\r?\n/)) {
-      const line = raw.trim();
-      if (!line || line.startsWith("#")) continue;
-      const parts = line.split(/[,|]/).map((s: string) => s.trim());
-      const [role, serviceNo, name, unit] = parts;
-      const res = await createOne({
-        role,
-        serviceNo,
-        name,
-        unit: unit || "Unassigned",
-        password: body.password,
-      });
-      if (res.error) errors.push(`${serviceNo || line}: ${res.error}`);
-      else created.push(res.user);
-    }
-    return NextResponse.json({ ok: true, created, errors });
-  }
+  const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
+  if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
 
-  const res = await createOne(body);
-  if (res.error) return NextResponse.json({ error: res.error }, { status: res.status });
-  return NextResponse.json({ ok: true, user: res.user });
-}
-
-/** DELETE /api/users?id=..  (Admin only) */
-export async function DELETE(req: Request) {
-  const a = requireRole(req, "officer");
-  if ("error" in a) return a.error;
-
-  await ensureSchema();
-  const id = Number(new URL(req.url).searchParams.get("id") || 0);
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-
-  if (id === a.user.id) {
-    return NextResponse.json({ error: "You cannot delete your own account" }, { status: 400 });
-  }
-
-  const [target] = await db.select().from(users).where(eq(users.id, id));
-  if (target?.role === "officer") {
-    const officers = await db.select({ id: users.id }).from(users).where(eq(users.role, "officer"));
-    if (officers.length <= 1) {
-      return NextResponse.json({ error: "Cannot delete the last admin" }, { status: 409 });
-    }
-  }
-
-  try {
-    await db.delete(users).where(eq(users.id, id));
-    return NextResponse.json({ ok: true });
-  } catch {
+  if (trip.status === "active") {
     return NextResponse.json(
-      { error: "This account has trip history and cannot be deleted — keep it, or reuse the service number." },
+      { error: "Cannot delete an active trip. Stop it first." },
       { status: 409 }
     );
   }
+
+  try {
+    // Child rows reference the trip through foreign keys, so delete them first.
+    await db.transaction(async (tx) => {
+      await tx.delete(positions).where(eq(positions.tripId, tripId));
+      await tx.delete(checkpoints).where(eq(checkpoints.tripId, tripId));
+      await tx.delete(alerts).where(eq(alerts.tripId, tripId));
+      await tx.delete(incidents).where(eq(incidents.tripId, tripId));
+      await tx.delete(trips).where(eq(trips.id, tripId));
+    });
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Delete failed" }, { status: 500 });
+  }
 }
 
-async function createOne(b: any): Promise<any> {
-  const name = String(b.name || "").trim();
-  // "admin" is the display term for the officer/command role.
-  const roleRaw = String(b.role || "").trim().toLowerCase();
-  const role = (roleRaw === "admin" ? "officer" : roleRaw) as Role;
-  const serviceNo = String(b.serviceNo || "").trim().toUpperCase();
-  const unit = String(b.unit || "").trim() || "Unassigned";
-  const password = String(b.password || "").trim() || "army123";
-
-  if (!ROLES.includes(role)) return { error: "Role must be admin, jco or driver", status: 400 };
-  if (!name) return { error: "Name is required", status: 400 };
-  if (!serviceNo) return { error: "Service number is required", status: 400 };
-
-  const existing = await db.select().from(users).where(eq(users.serviceNo, serviceNo));
-  if (existing.length) return { error: `${serviceNo} already exists`, status: 409 };
-
-  const [u] = await db
-    .insert(users)
-    .values({ name, role, serviceNo, unit, password: hashPassword(password) })
-    .returning({
-      id: users.id,
-      name: users.name,
-      role: users.role,
-      serviceNo: users.serviceNo,
-      unit: users.unit,
-    });
-  return { user: u };
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
