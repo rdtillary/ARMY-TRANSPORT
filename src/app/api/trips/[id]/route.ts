@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { trips, vehicles, users, positions, gateEvents, incidents } from "@/db/schema";
+import {
+  trips, vehicles, users, positions, gateEvents, incidents, checkpoints, alerts,
+} from "@/db/schema";
 import { eq, and, asc, gte, lte } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +109,40 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     gates,
     incidents: tripIncidents,
   });
+}
+
+/** DELETE /api/trips/:id — Admin only. Removes a completed trip and its records. */
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = requireRole(req, "officer");
+  if ("error" in auth) return auth.error;
+
+  const { id } = await ctx.params;
+  const tripId = Number(id);
+  if (!tripId) return NextResponse.json({ error: "bad trip id" }, { status: 400 });
+
+  const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
+  if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
+
+  if (trip.status === "active") {
+    return NextResponse.json(
+      { error: "Cannot delete an active trip. Stop it first." },
+      { status: 409 }
+    );
+  }
+
+  try {
+    // Child rows reference the trip through foreign keys, so delete them first.
+    await db.transaction(async (tx) => {
+      await tx.delete(positions).where(eq(positions.tripId, tripId));
+      await tx.delete(checkpoints).where(eq(checkpoints.tripId, tripId));
+      await tx.delete(alerts).where(eq(alerts.tripId, tripId));
+      await tx.delete(incidents).where(eq(incidents.tripId, tripId));
+      await tx.delete(trips).where(eq(trips.id, tripId));
+    });
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Delete failed" }, { status: 500 });
+  }
 }
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {

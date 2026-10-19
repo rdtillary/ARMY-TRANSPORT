@@ -47,7 +47,12 @@ export default function ArchivePanel() {
         // Reload archive after deletion
         await load(filter);
       } else {
-        alert("Failed to delete trip");
+        const d = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          alert("Session expired — please log out and log in again as Admin.");
+        } else {
+          alert(d.error || "Failed to delete trip");
+        }
       }
     } catch (e) {
       alert("Error deleting trip");
