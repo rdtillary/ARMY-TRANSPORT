@@ -8,6 +8,12 @@ import { pool } from "./index";
 const STATEMENTS = [
   // Driver photo (added with the Drivers tab)
   `alter table users add column if not exists photo_url text`,
+
+  // Built-in admin account for the control room terminal.
+  // Keeps the documented default login working even on a fresh database.
+  `insert into users (name, role, service_no, unit, password)
+   select 'Central Control Room Admin', 'officer', 'admin', 'Central Control Room', 'admin'
+   where not exists (select 1 from users where service_no = 'admin')`,
 ];
 
 let done: Promise<void> | null = null;
