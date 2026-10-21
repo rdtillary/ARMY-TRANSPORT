@@ -42,6 +42,24 @@
 .vm-red { color: #f87171; }
 .vm-gold { color: #d4c48a; }
 
+/* Clickable vehicle markers: pointer cursor + hover feedback */
+.vm-click .vdot,
+.vm-click .vtag {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.vm-click:hover .vtag {
+  filter: brightness(1.25);
+  transform: scale(1.06);
+}
+.vm-click:hover .vdot {
+  transform: scale(1.25);
+}
+.vm-click .vdot,
+.vm-click .vtag {
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
 .vm-pulse .vdot {
   animation: vpulse 1.4s ease-out infinite;
 }

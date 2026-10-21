@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Radar, AlertTriangle, Siren, Flag, Truck,
   Send, CheckCircle2, Radio, Gauge, Activity,
-  Users, Archive as ArchiveIcon, UserCheck, MapPin,
+  Users, Archive as ArchiveIcon, UserCheck, MapPin, X, User,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import TopBar from "@/components/TopBar";
@@ -34,6 +34,9 @@ export default function OfficerPage() {
   const [msg, setMsg] = useState("");
   const [sent, setSent] = useState(false);
   const [tab, setTab] = useState<Tab>("live");
+  // Vehicle selected on the map (trip id) + cached driver details/photos
+  const [selTrip, setSelTrip] = useState<number | null>(null);
+  const [driverInfo, setDriverInfo] = useState<Record<number, { photoUrl: string | null; serviceNo: string } | "loading">>({});
 
   useEffect(() => {
     const s = getSession();
@@ -73,6 +76,23 @@ export default function OfficerPage() {
     setTimeout(() => setSent(false), 2000);
   };
 
+  /* Click on a vehicle in the map: select it and fetch the driver's photo once. */
+  const openVehicle = (v: any) => {
+    setSelTrip(v.tripId);
+    const did = v.driverId as number;
+    if (!did || driverInfo[did]) return;
+    setDriverInfo((m) => ({ ...m, [did]: "loading" }));
+    fetch(`/api/drivers/${did}`)
+      .then((r) => r.json())
+      .then((d) =>
+        setDriverInfo((m) => ({
+          ...m,
+          [did]: { photoUrl: d?.driver?.photoUrl ?? null, serviceNo: d?.driver?.serviceNo ?? "" },
+        }))
+      )
+      .catch(() => setDriverInfo((m) => ({ ...m, [did]: { photoUrl: null, serviceNo: "" } })));
+  };
+
   if (!session) return null;
 
   const vs = live?.vehicles ?? [];
@@ -86,7 +106,11 @@ export default function OfficerPage() {
     sub: v.speed != null ? `${Math.round(v.speed)} km/h` : "no fix",
     color: v.status === "sos" ? "red" : v.status === "moving" ? "green" : "amber",
     pulse: v.status === "sos",
+    onClick: () => openVehicle(v),
   }));
+
+  const sel = selTrip != null ? vs.find((v) => v.tripId === selTrip) : null;
+  const selInfo = sel ? driverInfo[sel.driverId] : undefined;
 
   const tabs: { id: Tab; label: string; icon: any }[] = [
     { id: "live",    label: "Live Control",       icon: Radar      },
@@ -134,9 +158,64 @@ export default function OfficerPage() {
                 <h2 className="text-lg font-extrabold flex items-center gap-2">
                   <Radar size={19} className="text-[#d4c48a]" /> LIVE VEHICLE TRACKING
                 </h2>
-                <span className="text-[11px] text-[#8b8064] uppercase tracking-wider">auto-refresh 4s</span>
+                <span className="text-[11px] text-[#8b8064] uppercase tracking-wider">click a vehicle for driver details</span>
               </div>
-              <MapView className="h-[380px] md:h-[500px]" center={CAMPUS_VIEW_CENTER} zoom={15} markers={markers} places={CAMPUS_PLACES} />
+
+              <div className="relative">
+                <MapView className="h-[380px] md:h-[500px]" center={CAMPUS_VIEW_CENTER} zoom={15} markers={markers} places={CAMPUS_PLACES} />
+
+                {/* Vehicle / driver details card */}
+                {sel && (
+                  <div className="absolute top-3 right-3 z-[700] w-[240px] bg-[#141b10]/95 backdrop-blur border border-[#c0a86c]/50 rounded-2xl shadow-2xl p-3">
+                    <button
+                      onClick={() => setSelTrip(null)}
+                      className="absolute top-2 right-2 p-1 rounded-md text-[#a89a76] hover:text-white"
+                      aria-label="Close"
+                    >
+                      <X size={14} />
+                    </button>
+                    <div className="flex flex-col items-center text-center">
+                      <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-[#8b6f2e]/60 bg-[#0e1409] flex items-center justify-center">
+                        {selInfo && selInfo !== "loading" && selInfo.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={selInfo.photoUrl} alt={sel.driverName} className="w-full h-full object-cover" />
+                        ) : selInfo === "loading" ? (
+                          <span className="text-[10px] text-[#8b8064] animate-pulse">loading…</span>
+                        ) : (
+                          <User size={34} className="text-[#5d573f]" />
+                        )}
+                      </div>
+                      {selInfo && selInfo !== "loading" && !selInfo.photoUrl && (
+                        <div className="text-[9px] text-[#5d573f] mt-1">No photo uploaded</div>
+                      )}
+                      <div className="mt-2 text-[10px] uppercase tracking-widest text-[#8b8064]">Driver</div>
+                      <div className="text-sm font-extrabold leading-tight">{sel.driverName}</div>
+                      {selInfo && selInfo !== "loading" && selInfo.serviceNo && (
+                        <div className="text-[11px] text-[#d4c48a] font-bold">{selInfo.serviceNo}</div>
+                      )}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-[#8b6f2e]/25 space-y-1.5 text-xs">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[#8b8064]">Vehicle</span>
+                        <span className="font-extrabold">{sel.regNo}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[#8b8064]">Type</span>
+                        <span className="font-bold text-right">{sel.type}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[#8b8064]">Speed</span>
+                        <span className="font-bold">{sel.speed != null ? `${Math.round(sel.speed)} km/h` : "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-[#8b8064]">Status</span>
+                        <StatusBadge status={sel.status} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-wrap gap-4 text-[11px] text-[#a89a76] mt-3">
                 <Legend color="bg-emerald-400" label="Moving (GPS fresh)" />
                 <Legend color="bg-amber-400" label="Stale — no recent fix" />

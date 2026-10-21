@@ -12,6 +12,8 @@ export type MapMarker = {
   sub?: string;
   color: "green" | "amber" | "red" | "gold";
   pulse?: boolean;
+  /** When set, the marker becomes clickable (pointer cursor + click handler). */
+  onClick?: () => void;
 };
 
 const NO_PLACES: CampusPlace[] = [];
@@ -42,7 +44,7 @@ function loadGoogle(): Promise<any> {
 
 function markerHtml(m: MapMarker) {
   const sub = m.sub ? `<i>${m.sub}</i>` : "";
-  return `<div class="vmarker vm-${m.color}${m.pulse ? " vm-pulse" : ""}"><span class="vdot"></span><span class="vtag">${m.label}${sub}</span></div>`;
+  return `<div class="vmarker vm-${m.color}${m.pulse ? " vm-pulse" : ""}${m.onClick ? " vm-click" : ""}"><span class="vdot"></span><span class="vtag">${m.label}${sub}</span></div>`;
 }
 
 type Engine =
@@ -69,6 +71,7 @@ export default function MapView({
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
+  const clickRef = useRef<Map<string, () => void>>(new Map());
   const [ready, setReady] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,6 +145,9 @@ export default function MapView({
     for (const m of markers) {
       if (m.lat == null || m.lng == null || !isFinite(m.lat) || !isFinite(m.lng)) continue;
       seen.add(m.id);
+      // Always keep the latest click handler (read through a ref by the marker).
+      if (m.onClick) clickRef.current.set(m.id, m.onClick);
+      else clickRef.current.delete(m.id);
       const html = markerHtml(m);
       if (eng.kind === "google") {
         const pos = { lat: m.lat, lng: m.lng };
@@ -156,6 +162,7 @@ export default function MapView({
           existing.setIcon(icon);
         } else {
           const mk = new eng.gmaps.Marker({ position: pos, icon, map: eng.map, title: m.label });
+          mk.addListener("click", () => clickRef.current.get(m.id)?.());
           eng.markers.set(m.id, mk);
         }
       } else {
@@ -167,6 +174,7 @@ export default function MapView({
           existing.setIcon(icon);
         } else {
           const mk = L.marker([m.lat, m.lng], { icon }).addTo(eng.map);
+          mk.on("click", () => clickRef.current.get(m.id)?.());
           eng.markers.set(m.id, mk);
         }
       }
@@ -176,6 +184,7 @@ export default function MapView({
         if (eng.kind === "google") mk.setMap(null);
         else mk.remove();
         eng.markers.delete(id);
+        clickRef.current.delete(id);
       }
     }
     /* Optionally follow a specific vehicle. */
