@@ -2,15 +2,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trips, vehicles, users, positions, alerts } from "@/db/schema";
 import { eq, and, inArray, gte, desc, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/tracking/live → live fleet picture. Admin + JCO only. */
-export async function GET(req: Request) {
-  const auth = requireRole(req, "officer", "jco");
-  if ("error" in auth) return auth.error;
+/** A vehicle is "moving" (green) if its last fix is newer than this. */
+const FRESH_MS = 90_000;
 
+/** GET /api/tracking/live → live fleet picture for Officer + JCO terminals. */
+export async function GET() {
   const active = await db
     .select({
       tripId: trips.id,
@@ -63,7 +62,7 @@ export async function GET(req: Request) {
   const vehiclesOut = active.map((a) => {
     const p = latest[a.tripId];
     const age = p ? now - p.ts.getTime() : Infinity;
-    const status = sosTripIds.has(a.tripId) ? "sos" : age < 30_000 ? "moving" : "stale";
+    const status = sosTripIds.has(a.tripId) ? "sos" : age < FRESH_MS ? "moving" : "stale";
     return {
       tripId: a.tripId,
       vehicleId: a.vehicleId,

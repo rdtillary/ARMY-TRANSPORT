@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Archive as ArchiveIcon,
   X,
@@ -9,65 +9,11 @@ import {
   Gauge,
   Camera,
   Trash2,
-  MapPin,
 } from "lucide-react";
 import MapView, { type MapMarker } from "@/components/MapView";
 import { fmtClock } from "@/lib/session";
-import { CAMPUS_PLACES, type CampusPlace } from "@/lib/campusPlaces";
 
 type Filter = "all" | "active" | "completed";
-
-/** A building counts as "passed" if the route came within this many metres of it. */
-const PASS_RADIUS_M = 80;
-
-type RoutePt = { lat: number; lng: number; ts: string | number };
-type AreaPassed = { place: CampusPlace; distM: number; ts: number };
-
-/**
- * Which named campus buildings did this trip pass?
- * Uses the distance from each building to the nearest route SEGMENT (not just
- * the nearest GPS point), so sparse/decimated points cannot cause a miss.
- */
-function computeAreasPassed(pts: RoutePt[], places: CampusPlace[]): AreaPassed[] {
-  if (pts.length === 0) return [];
-  const out: AreaPassed[] = [];
-
-  for (const pl of places) {
-    const kLat = 111320;
-    const kLng = 111320 * Math.cos((pl.lat * Math.PI) / 180);
-    // route points relative to the building (building = origin), in metres
-    const rel = pts.map((p) => ({
-      x: (p.lng - pl.lng) * kLng,
-      y: (p.lat - pl.lat) * kLat,
-      ts: new Date(p.ts).getTime(),
-    }));
-
-    let best = Infinity;
-    let bestTs = rel[0].ts;
-
-    if (rel.length === 1) {
-      best = Math.hypot(rel[0].x, rel[0].y);
-    } else {
-      for (let i = 0; i < rel.length - 1; i++) {
-        const a = rel[i];
-        const b = rel[i + 1];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const len2 = dx * dx + dy * dy;
-        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / len2));
-        const d = Math.hypot(a.x + t * dx, a.y + t * dy);
-        if (d < best) {
-          best = d;
-          bestTs = a.ts + (b.ts - a.ts) * t; // time of closest approach
-        }
-      }
-    }
-
-    if (best <= PASS_RADIUS_M) out.push({ place: pl, distM: best, ts: bestTs });
-  }
-
-  return out.sort((a, b) => a.ts - b.ts); // in the order the vehicle passed them
-}
 
 export default function ArchivePanel() {
   const [archive, setArchive] = useState<any[] | null>(null);
@@ -98,10 +44,15 @@ export default function ArchivePanel() {
     try {
       const res = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
       if (res.ok) {
+        // Reload archive after deletion
         await load(filter);
       } else {
         const d = await res.json().catch(() => ({}));
-        alert(d.error || "Failed to delete trip");
+        if (res.status === 401) {
+          alert("Session expired — please log out and log in again as Admin.");
+        } else {
+          alert(d.error || "Failed to delete trip");
+        }
       }
     } catch (e) {
       alert("Error deleting trip");
@@ -215,42 +166,13 @@ export default function ArchivePanel() {
 
 function TripDetail({ d, onClose }: { d: any; onClose: () => void }) {
   const t = d.trip;
-
-  // Route as lat/lng pairs for the polyline (memoised so the map is not redrawn needlessly)
-  const path: [number, number][] = useMemo(
-    () => (d.path || []).map((p: any) => [p.lat, p.lng] as [number, number]),
-    [d.path]
-  );
-
-  // Which named buildings did this vehicle pass?
-  const areasPassed = useMemo(
-    () => computeAreasPassed((d.path || []) as RoutePt[], CAMPUS_PLACES),
-    [d.path]
-  );
-
-  // Buildings NOT passed stay as plain gold labels; passed ones become green markers (below)
-  const otherPlaces = useMemo(() => {
-    const passed = new Set(areasPassed.map((a) => a.place.name));
-    return CAMPUS_PLACES.filter((p) => !passed.has(p.name));
-  }, [areasPassed]);
-
+  const path: [number, number][] = (d.path || []).map((p: any) => [p.lat, p.lng]);
   const markers: MapMarker[] = [];
   const start = path[0];
   const end = path[path.length - 1];
   if (start) markers.push({ id: "start", lat: start[0], lng: start[1], label: "START", color: "green" });
   if (end && t.status === "completed") markers.push({ id: "end", lat: end[0], lng: end[1], label: "END", color: "red" });
   if (end && t.status === "active") markers.push({ id: "live", lat: end[0], lng: end[1], label: t.regNo, sub: "live", color: "gold", pulse: true });
-  for (const a of areasPassed) {
-    markers.push({
-      id: `pass-${a.place.name}`,
-      lat: a.place.lat,
-      lng: a.place.lng,
-      label: a.place.name,
-      sub: fmtClock(a.ts),
-      color: "green",
-    });
-  }
-
   const durMin = Math.round(t.durationSec / 60);
 
   return (
@@ -277,42 +199,10 @@ function TripDetail({ d, onClose }: { d: any; onClose: () => void }) {
       </div>
 
       {path.length >= 2 ? (
-        <MapView className="h-[360px]" markers={markers} path={path} zoom={13} places={otherPlaces} />
+        <MapView className="h-[360px]" markers={markers} path={path} zoom={13} />
       ) : (
         <div className="h-40 rounded-2xl border border-dashed border-[#8b6f2e]/30 flex items-center justify-center text-xs text-[#8b8064]">
           No GPS route recorded for this trip.
-        </div>
-      )}
-
-      {/* Areas passed */}
-      {path.length >= 2 && (
-        <div className="mt-4">
-          <h5 className="text-xs font-extrabold tracking-widest text-[#d4c48a] mb-2 flex items-center gap-1.5">
-            <MapPin size={12} /> AREAS PASSED ({areasPassed.length})
-            <span className="text-[10px] font-medium text-[#8b8064] tracking-normal normal-case">
-              · within {PASS_RADIUS_M} m of the route, in order of passing
-            </span>
-          </h5>
-          {areasPassed.length === 0 ? (
-            <p className="text-xs text-[#8b8064] bg-[#141c0e] border border-[#8b6f2e]/15 rounded-xl px-3 py-2.5">
-              This trip did not pass any named campus building.
-            </p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
-              {areasPassed.map((a, i) => (
-                <span key={a.place.name} className="flex items-center gap-1">
-                  <span
-                    title={`closest approach ${Math.round(a.distM)} m`}
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-400/10 border-emerald-400/50 text-emerald-300"
-                  >
-                    {a.place.name}
-                    <i className="not-italic font-normal text-[9px] opacity-70 ml-1">{fmtClock(a.ts)}</i>
-                  </span>
-                  {i < areasPassed.length - 1 && <span className="text-[#5d573f] text-[10px]">→</span>}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

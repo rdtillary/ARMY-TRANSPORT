@@ -1,4 +1,4 @@
-import { registerPlugin } from "@capacitor/core";
+import { getSession } from "./session";
 
 export type GeoPos = {
   lat: number;
@@ -9,84 +9,96 @@ export type GeoPos = {
   ts?: number; // time the fix was captured (ms since epoch)
 };
 
-/* ---- Native background watcher (@capacitor-community/background-geolocation) ----
- * Registered by name, so the web build does not need the package installed.
- * The APK build workflow installs it and Android runs it as a foreground
- * service, which keeps GPS alive while the screen is off. */
-type BgLocation = {
-  latitude: number;
-  longitude: number;
-  accuracy: number;
-  speed: number | null; // m/s
-  bearing: number | null;
-  time: number | null;
-};
-type BgError = { code?: string; message?: string };
-type BgPlugin = {
-  addWatcher(
-    opts: {
-      backgroundMessage?: string;
-      backgroundTitle?: string;
-      requestPermissions?: boolean;
-      stale?: boolean;
-      distanceFilter?: number;
-    },
-    cb: (loc?: BgLocation, err?: BgError) => void
-  ): Promise<string>;
-  removeWatcher(opts: { id: string }): Promise<void>;
-  openSettings(): Promise<void>;
-};
-const BackgroundGeolocation = registerPlugin<BgPlugin>("BackgroundGeolocation");
+const BG_PKG = "@capgo/background-geolocation";
+const isNative = () =>
+  !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+
+/** Find the driver's active trip so the native service knows where to POST. */
+async function activeTripId(userId: number): Promise<number | null> {
+  try {
+    const r = await fetch(`/api/trips?userId=${userId}`);
+    const d = await r.json();
+    return d?.trip?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Stop the Android foreground GPS service (safe to call any time). */
+export async function stopNativeTracking(): Promise<void> {
+  if (typeof window === "undefined" || !isNative()) return;
+  try {
+    const { BackgroundGeolocation } = await import("@capgo/background-geolocation");
+    await BackgroundGeolocation.stop();
+  } catch {
+    /* plugin not present — nothing to stop */
+  }
+}
 
 /**
  * Start a continuous GPS watch.
- * - Inside the Capacitor (Android APK) shell it prefers a foreground-service
- *   watcher that keeps reporting with the screen off, and falls back to
- *   @capacitor/geolocation if that plugin is not in the APK.
- * - In a plain browser it falls back to navigator.geolocation.
+ * - Inside the Android APK it runs a foreground SERVICE that keeps working with
+ *   the screen off, the app in the background, or the app swiped away. The
+ *   service POSTs every fix straight to the server (no WebView needed).
+ *   The JavaScript callback is still used for the on-screen map and the
+ *   offline retry queue; the server ignores duplicate points.
+ * - Falls back to @capacitor/geolocation (foreground only) if the plugin is missing.
+ * - In a plain browser it uses navigator.geolocation.
  * Resolves to a function that stops the watch.
  */
 export function startGeoWatch(
   onPos: (p: GeoPos) => void,
   onErr: (msg: string) => void
 ): Promise<() => void> {
-  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-
-  if (cap?.isNativePlatform?.()) {
+  if (isNative()) {
     return (async () => {
-      // 1) Background-capable watcher
+      // 1) Background service (survives screen-off / app closed)
       try {
-        const id = await BackgroundGeolocation.addWatcher(
-          {
-            backgroundTitle: "Movement tracking ON",
-            backgroundMessage: "Army Transport is reporting this vehicle's position.",
-            requestPermissions: true,
-            stale: false,
-            distanceFilter: 0,
-          },
-          (loc, err) => {
-            if (err) {
-              if (err.code === "NOT_AUTHORIZED") {
-                onErr('Location permission needed — set Location to "Allow all the time" in app settings');
-                void BackgroundGeolocation.openSettings().catch(() => {});
-              } else {
-                onErr(err.message || "Native GPS error");
-              }
-              return;
+        const { BackgroundGeolocation } = await import("@capgo/background-geolocation");
+        const session = getSession();
+        const tripId = session ? await activeTripId(session.id) : null;
+
+        const opts: Record<string, unknown> = {
+          backgroundTitle: "Movement tracking ON",
+          backgroundMessage: "MCTE Transport is reporting this vehicle's position.",
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 0,
+          minIntervalMs: 5000, // one point every ~5 s, even when parked
+          networkFallback: true, // cell/Wi-Fi fix when GPS is silent
+        };
+        if (tripId && session?.token) {
+          opts.url = `${window.location.origin}/api/trips/native-track?tripId=${tripId}`;
+          opts.headers = { Authorization: `Bearer ${session.token}` };
+        }
+
+        let lastForwarded = 0;
+        await BackgroundGeolocation.start(opts as never, (loc, err) => {
+          if (err) {
+            if (err.code === "NOT_AUTHORIZED") {
+              onErr('Location permission needed — set Location to "Allow all the time" in app settings');
+              void BackgroundGeolocation.openSettings().catch(() => {});
+            } else {
+              onErr(err.message || "Native GPS error");
             }
-            if (!loc) return;
-            onPos({
-              lat: loc.latitude,
-              lng: loc.longitude,
-              speed: loc.speed != null && loc.speed >= 0 ? loc.speed * 3.6 : undefined,
-              heading: loc.bearing ?? undefined,
-              accuracy: loc.accuracy,
-              ts: loc.time ?? Date.now(),
-            });
+            return;
           }
-        );
+          if (!loc) return;
+          // Throttle the JS side; the native service already uploads on its own.
+          const t = loc.time ?? Date.now();
+          if (t - lastForwarded < 4000) return;
+          lastForwarded = t;
+          onPos({
+            lat: loc.latitude,
+            lng: loc.longitude,
+            speed: loc.speed != null && loc.speed >= 0 ? loc.speed * 3.6 : undefined,
+            heading: loc.bearing ?? undefined,
+            accuracy: loc.accuracy,
+            ts: t,
+          });
+        });
         return () => {
-          void BackgroundGeolocation.removeWatcher({ id }).catch(() => {});
+          void BackgroundGeolocation.stop().catch(() => {});
         };
       } catch {
         // plugin missing from this APK — use the foreground-only watcher below
@@ -97,7 +109,7 @@ export function startGeoWatch(
       try {
         await Geolocation.requestPermissions({ permissions: ["location"] });
       } catch {
-        // Android may deny or not expose background permission in some contexts.
+        /* permission prompt unavailable */
       }
 
       let watchId: string | null = null;
@@ -156,11 +168,7 @@ export function startGeoWatch(
         };
         onErr(msgs[err.code] || "GPS error");
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 12000,
-      }
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 }
     );
 
     resolve(() => navigator.geolocation.clearWatch(id));
