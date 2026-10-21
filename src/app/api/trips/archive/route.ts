@@ -3,11 +3,15 @@ import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { trips, vehicles, users, positions } from "@/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/trips/archive?status=all|completed|active */
+/** GET /api/trips/archive?status=all|completed|active — Admin + JCO only */
 export async function GET(req: NextRequest) {
+  const auth = requireRole(req, "officer", "jco");
+  if ("error" in auth) return auth.error;
+
   const status = req.nextUrl.searchParams.get("status") || "all";
 
   const rows = await db
@@ -30,7 +34,6 @@ export async function GET(req: NextRequest) {
     .orderBy(desc(trips.startedAt), desc(trips.id))
     .limit(200);
 
-  // PostGIS is not installed — compute distance in JS instead.
   const tripIds = rows.map((r) => r.tripId);
   let distanceMap: Record<number, number> = {};
   if (tripIds.length) {

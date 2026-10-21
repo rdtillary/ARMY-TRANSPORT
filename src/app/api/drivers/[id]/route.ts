@@ -1,28 +1,25 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, trips, vehicles } from "@/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { ensureSchema } from "@/db/migrate";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/drivers/[id]
- * Full driver profile:
- * - personal details + photo
- * - all completed trips (same data as archive)
- * - all unique vehicles handled
- */
+/** GET /api/drivers/[id] — Admin only. Full driver profile. */
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   await ensureSchema();
   const { id } = await ctx.params;
   const driverId = Number(id);
   if (!driverId) return NextResponse.json({ error: "bad driver id" }, { status: 400 });
 
-  // Driver details
   const [driver] = await db
     .select({
       id: users.id,
@@ -37,7 +34,6 @@ export async function GET(
 
   if (!driver) return NextResponse.json({ error: "Driver not found" }, { status: 404 });
 
-  // All trips by this driver
   const allTrips = await db
     .select({
       tripId: trips.id,
@@ -53,7 +49,6 @@ export async function GET(
     .where(eq(trips.driverId, driverId))
     .orderBy(desc(trips.startedAt), desc(trips.id));
 
-  // Calculate distance for each trip from positions
   const { positions } = await import("@/db/schema");
   const tripsWithDistance = await Promise.all(
     allTrips.map(async (t) => {
@@ -65,8 +60,8 @@ export async function GET(
 
       const distanceKm = pts.reduce((acc, p, i) => {
         if (i === 0) return 0;
-        const a = pts[i - 1];
-        return acc + haversine(a.lat, a.lng, p.lat, p.lng);
+        const prev = pts[i - 1];
+        return acc + haversine(prev.lat, prev.lng, p.lat, p.lng);
       }, 0);
 
       const durationSec = t.endedAt && t.startedAt
@@ -82,12 +77,11 @@ export async function GET(
     })
   );
 
-  // Unique vehicles handled — deduplicated by regNo
   const vehiclesHandled = Array.from(
     new Map(
       allTrips.map((t) => [t.regNo, { regNo: t.regNo, type: t.type, unit: t.unit }])
     ).values()
-  ).sort((a, b) => a.regNo.localeCompare(b.regNo));
+  ).sort((x, y) => x.regNo.localeCompare(y.regNo));
 
   return NextResponse.json({
     driver,

@@ -5,16 +5,15 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { gateScan } from "@/lib/ops";
 import { recognizePlate, compactPlate, scorePlate } from "@/lib/anpr";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Lowered from 0.85 to 0.70 for real gate camera conditions where
-// the plate is small in a full scene photo (IP camera at gate)
 const AUTO_LOG_SCORE_THRESHOLD = 0.70;
 
 /**
- * POST /api/gate/scan
+ * POST /api/gate/scan   (Admin only)
  *
  * A) JSON (manual table button):
  *      {vehicleId, direction?, plateText?, confidence?}
@@ -26,6 +25,9 @@ const AUTO_LOG_SCORE_THRESHOLD = 0.70;
  *      plateText?  (manual correction — overrides OCR)
  */
 export async function POST(req: Request) {
+  const auth = requireRole(req, "officer");
+  if ("error" in auth) return auth.error;
+
   const ctype = req.headers.get("content-type") || "";
 
   /* ─────────────────────────────────── JSON path (manual table button) */
@@ -78,7 +80,6 @@ export async function POST(req: Request) {
 
   const input = Buffer.from(await file.arrayBuffer());
 
-  // Resize for display and run OCR in parallel with fleet fetch
   const [photoBuf, fleet] = await Promise.all([
     sharp(input)
       .rotate()
@@ -89,11 +90,9 @@ export async function POST(req: Request) {
   ]);
   const photoUrl = `data:image/jpeg;base64,${photoBuf.toString("base64")}`;
 
-  // Run OCR
   const ocr = await recognizePlate(input);
   if (!plateText) plateText = ocr.plate || "";
 
-  // Rank ALL fleet vehicles by plate similarity
   const matches = fleet
     .map((v) => ({
       vehicleId: v.id,
@@ -110,14 +109,10 @@ export async function POST(req: Request) {
   const topMatch = matches[0];
   const secondMatch = matches[1];
 
-  // Operator confirmed a specific vehicle explicitly
   let chosen = manualVehicleId
     ? matches.find((m) => m.vehicleId === manualVehicleId)
     : null;
 
-  // Auto-select: top match must meet threshold AND be clearly better than
-  // the second match (gap ≥ 0.10) to avoid ambiguous reads logging the
-  // wrong vehicle when two similar plates are in fleet
   if (!chosen && !manualVehicleId) {
     const clearWinner =
       topMatch &&
@@ -127,7 +122,6 @@ export async function POST(req: Request) {
     if (clearWinner) chosen = topMatch;
   }
 
-  // Not confident enough — ask operator to confirm
   if (!chosen) {
     return NextResponse.json({
       ok: false,
@@ -136,13 +130,11 @@ export async function POST(req: Request) {
       confidence: ocr.confidence,
       engine: ocr.engine,
       rawText: (ocr.rawText || "").slice(0, 300),
-      // Return top 6 matches so operator can pick correct vehicle
       matches: matches.slice(0, 6),
       photoUrl,
     });
   }
 
-  // Fetch full vehicle record for the chosen match
   const [vehicle] = await db
     .select()
     .from(vehicles)

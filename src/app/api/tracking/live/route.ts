@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trips, vehicles, users, positions, alerts } from "@/db/schema";
 import { eq, and, inArray, gte, desc, sql } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
-/** GET /api/tracking/live → live fleet picture for Officer + JCO terminals. */
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+/** GET /api/tracking/live → live fleet picture. Admin + JCO only. */
+export async function GET(req: Request) {
+  const auth = requireRole(req, "officer", "jco");
+  if ("error" in auth) return auth.error;
+
   const active = await db
     .select({
       tripId: trips.id,

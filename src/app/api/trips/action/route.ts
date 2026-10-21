@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { trips, vehicles, users, positions, checkpoints, alerts } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
 /**
- * POST /api/trips/action
+ * POST /api/trips/action   (driver only, own trip only)
  *   {tripId, action: "complete"}      → end trip, free vehicle
  *   {tripId, action: "checkpoint"}    → log a checkpoint at the last known position
  *   {tripId, action: "sos"}           → raise an SOS alert to command
  */
 export async function POST(req: Request) {
+  const auth = requireRole(req, "driver");
+  if ("error" in auth) return auth.error;
+
   const body = await req.json().catch(() => ({}));
   const tripId = Number(body.tripId || 0);
   const action = String(body.action || "");
@@ -32,16 +36,27 @@ export async function POST(req: Request) {
     .where(eq(trips.id, tripId));
   if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
 
+  // A driver may only act on their own trip
+  if (trip.driverId !== auth.user.id) {
+    return NextResponse.json({ error: "This is not your trip" }, { status: 403 });
+  }
+
   if (action === "complete") {
+    // Repeated STOP presses must not free a vehicle that is on a newer trip
+    if (trip.status !== "active") return NextResponse.json({ ok: true, alreadyEnded: true });
+
     await db
       .update(trips)
       .set({ status: "completed", endedAt: new Date() })
       .where(eq(trips.id, tripId));
     await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, trip.vehicleId));
-    // MT Park rule engine: rule 3 (stopped while OUT) is raised here.
     const { handleTripStopped } = await import("@/lib/ops");
     await handleTripStopped({ tripId, vehicleId: trip.vehicleId, driverId: trip.driverId });
     return NextResponse.json({ ok: true });
+  }
+
+  if (trip.status !== "active") {
+    return NextResponse.json({ error: "Trip is not active" }, { status: 409 });
   }
 
   if (action === "checkpoint") {

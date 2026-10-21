@@ -3,16 +3,19 @@ import { db } from "@/db";
 import { vehicles } from "@/db/schema";
 import { asc } from "drizzle-orm";
 import { gateScan } from "@/lib/ops";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** POST /api/gate/simulate — camera catches a random vehicle crossing the gate. */
-export async function POST() {
+/** POST /api/gate/simulate — Admin only. Camera catches a random vehicle crossing the gate. */
+export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   const fleet = await db.select().from(vehicles).orderBy(asc(vehicles.id));
   const movable = fleet.filter((v) => v.status !== "maintenance");
   if (!movable.length) return NextResponse.json({ error: "No vehicles available" }, { status: 409 });
 
-  // Bias toward sending parked vehicles OUT (the common demo scenario).
   const inside = movable.filter((v) => v.parkStatus === "in");
   const outside = movable.filter((v) => v.parkStatus === "out");
   let pick: (typeof movable)[number];

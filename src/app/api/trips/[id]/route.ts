@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import {
-  trips, vehicles, users, positions, gateEvents, incidents, checkpoints, alerts,
-} from "@/db/schema";
+import { trips, vehicles, users, positions, gateEvents, incidents, checkpoints, alerts } from "@/db/schema";
 import { eq, and, asc, gte, lte } from "drizzle-orm";
 import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/trips/:id — full trip record: route points, gate photos, incidents. */
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+/** GET /api/trips/:id — full trip record. Admin + JCO only. */
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = requireRole(req, "officer", "jco");
+  if ("error" in auth) return auth.error;
+
   const { id } = await ctx.params;
   const tripId = Number(id);
   if (!tripId) return NextResponse.json({ error: "bad trip id" }, { status: 400 });
@@ -41,18 +42,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .where(eq(positions.tripId, tripId))
     .orderBy(asc(positions.ts), asc(positions.id));
 
-  // Decimate to at most 400 points for the map.
   const stride = Math.max(1, Math.ceil(allPts.length / 400));
   const path = allPts.filter((_, i) => i % stride === 0 || i === allPts.length - 1);
 
   const maxSpeed = allPts.reduce((m, p) => Math.max(m, p.speed || 0), 0);
   const distanceKm = path.reduce((acc, p, i) => {
     if (i === 0) return 0;
-    const a = path[i - 1];
-    return acc + haversine(a.lat, a.lng, p.lat, p.lng);
+    const prev = path[i - 1];
+    return acc + haversine(prev.lat, prev.lng, p.lat, p.lng);
   }, 0);
 
-  // Gate scans for the trip's vehicle within its time window (+/- 5 min).
   const start = new Date(t.startedAt.getTime() - 5 * 60 * 1000);
   const end = t.endedAt ? new Date(t.endedAt.getTime() + 5 * 60 * 1000) : new Date();
   const tripVehicleId = await db
@@ -111,7 +110,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   });
 }
 
-/** DELETE /api/trips/:id — Admin only. Removes a completed trip and its records. */
+/** DELETE /api/trips/:id — Admin only. Removes a finished trip and its GPS data. */
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = requireRole(req, "officer");
   if ("error" in auth) return auth.error;
@@ -121,22 +120,19 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   if (!tripId) return NextResponse.json({ error: "bad trip id" }, { status: 400 });
 
   const [trip] = await db.select().from(trips).where(eq(trips.id, tripId));
-  if (!trip) return NextResponse.json({ error: "Trip not found" }, { status: 404 });
-
+  if (!trip) return NextResponse.json({ error: "trip not found" }, { status: 404 });
   if (trip.status === "active") {
     return NextResponse.json(
-      { error: "Cannot delete an active trip. Stop it first." },
+      { error: "Trip is still active — stop it (or force-stop tracking) first" },
       { status: 409 }
     );
   }
 
   try {
-    // Child rows reference the trip through foreign keys, so delete them first.
     await db.transaction(async (tx) => {
       await tx.delete(positions).where(eq(positions.tripId, tripId));
       await tx.delete(checkpoints).where(eq(checkpoints.tripId, tripId));
       await tx.delete(alerts).where(eq(alerts.tripId, tripId));
-      await tx.delete(incidents).where(eq(incidents.tripId, tripId));
       await tx.delete(trips).where(eq(trips.id, tripId));
     });
     return NextResponse.json({ ok: true });

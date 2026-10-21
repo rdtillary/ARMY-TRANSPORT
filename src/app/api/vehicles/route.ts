@@ -2,19 +2,24 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { vehicles } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { requireRole } from "@/lib/auth";
 
-/** GET /api/vehicles */
-export async function GET() {
+/** GET /api/vehicles — any logged-in user */
+export async function GET(req: Request) {
+  const a = requireRole(req);
+  if ("error" in a) return a.error;
   const rows = await db.select().from(vehicles).orderBy(asc(vehicles.regNo));
   return NextResponse.json({ vehicles: rows });
 }
 
 /**
- * POST /api/vehicles
+ * POST /api/vehicles  (Admin only)
  *   single: {regNo, type, unit, fuelPct?, mileage?, maintenanceDue?, status?}
  *   bulk:   {bulk: "regNo,type,unit\n..."}  (# lines ignored)
  */
 export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
   const body = await req.json().catch(() => ({}));
 
   if (typeof body.bulk === "string" && body.bulk.trim()) {
@@ -36,8 +41,10 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, vehicle: res.vehicle });
 }
 
-/** DELETE /api/vehicles?id=.. */
+/** DELETE /api/vehicles?id=..  (Admin only) */
 export async function DELETE(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
   const id = Number(new URL(req.url).searchParams.get("id") || 0);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   const [v] = await db.select().from(vehicles).where(eq(vehicles.id, id));

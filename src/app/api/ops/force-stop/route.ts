@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminForceStopTracking } from "@/lib/ops";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,9 +9,10 @@ export const runtime = "nodejs";
  * POST /api/ops/force-stop
  * Body: { vehicleId: number }
  * Admin only — force-stops an active trip.
- * Used for Rule 2: tracking ON but vehicle still inside MT Park.
  */
 export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
   try {
     const body = await req.json().catch(() => ({}));
     const vehicleId = Number(body.vehicleId || 0);

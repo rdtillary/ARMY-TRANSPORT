@@ -4,17 +4,19 @@ import { vehicles } from "@/db/schema";
 import { asc } from "drizzle-orm";
 import sharp from "sharp";
 import { recognizePlate, compactPlate, scorePlate } from "@/lib/anpr";
+import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * POST /api/anpr/recognize  (multipart/form-data)
+ * POST /api/anpr/recognize  (multipart/form-data) — Admin only
  *   field "image": gate camera photograph (JPEG/PNG)
- * Returns the detected plate, confidence, ranked fleet matches and a
- * small data-URL thumbnail for display in the UI.
  */
 export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
+
   try {
     const form = await req.formData();
     const file = form.get("image");
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
           score: Math.round(scorePlate(result.compact!, compactPlate(v.regNo)) * 100) / 100,
         }))
         .filter((m) => m.score > 0.5)
-        .sort((a, b) => b.score - a.score)
+        .sort((x, y) => y.score - x.score)
         .slice(0, 5);
     }
 

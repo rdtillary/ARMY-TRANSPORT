@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
+import { requireRole } from "@/lib/auth";
 
 const DDL = [
   `create table if not exists users (
@@ -65,7 +66,6 @@ const DDL = [
     ts timestamptz not null default now()
   )`,
   `alter table users add column if not exists photo_url text`,
-  // --- MT Park operations ---
   `alter table vehicles add column if not exists park_status text not null default 'in'`,
   `alter table vehicles add column if not exists pending_stop_at timestamptz`,
   `create table if not exists gate_events (
@@ -103,8 +103,10 @@ const DDL = [
   )`
 ];
 
-/** POST /api/setup → initialize database schema. */
-export async function POST() {
+/** POST /api/setup → initialize database schema. Admin only. */
+export async function POST(req: Request) {
+  const a = requireRole(req, "officer");
+  if ("error" in a) return a.error;
   try {
     for (const sql of DDL) {
       await db.execute(sql);
