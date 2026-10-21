@@ -23,6 +23,8 @@ export default function DriverPage() {
   const [simMode, setSimMode] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [filteredFixes, setFilteredFixes] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState<string | null>(null);
   const [notes, setNotes] = useState<any[]>([]);
@@ -181,6 +183,44 @@ export default function DriverPage() {
     // be uploaded (phone asleep / no signal) is sent later with its original time.
     const send = (p: GeoPos) => {
       if (cancelled) return;
+
+      // Reject low-confidence fixes before they enter the persistent upload queue.
+      // Simulator fixes have no device GPS accuracy, so they are handled separately.
+      const accuracy = typeof p.accuracy === "number" ? p.accuracy : undefined;
+      if (!simMode && accuracy !== undefined && (!Number.isFinite(accuracy) || accuracy > 100)) {
+        setFilteredFixes((n) => n + 1);
+        setGpsError(`Weak GPS accuracy (${Math.round(accuracy)} m) — waiting for a better fix`);
+        resetWatchdog();
+        return;
+      }
+
+      // Reject impossible reported speeds and large jumps between consecutive fixes.
+      if (!simMode && typeof p.speed === "number" && Number.isFinite(p.speed) && p.speed > 180) {
+        setFilteredFixes((n) => n + 1);
+        setGpsError(`GPS jump filtered (${Math.round(p.speed)} km/h reported)`);
+        resetWatchdog();
+        return;
+      }
+      if (!simMode && lastFix) {
+        const elapsedSeconds = Math.max(1, (Date.now() - lastFixAt) / 1000);
+        const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+        const dLat = toRad(p.lat - lastFix.lat);
+        const dLng = toRad(p.lng - lastFix.lng);
+        const lat1 = toRad(lastFix.lat);
+        const lat2 = toRad(p.lat);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        const distanceMeters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+        const impliedKmh = (distanceMeters / elapsedSeconds) * 3.6;
+        if (impliedKmh > 200 && distanceMeters > 80) {
+          setFilteredFixes((n) => n + 1);
+          setGpsError(`GPS jump filtered (${Math.round(impliedKmh)} km/h implied)`);
+          resetWatchdog();
+          return;
+        }
+      }
+
       lastFix = p;
       lastFixAt = Date.now();
       setPos(p);
@@ -273,18 +313,38 @@ export default function DriverPage() {
   };
 
   const stop = async () => {
-    if (!trip) return;
-    await flush(trip.id); // push any positions still waiting to upload
-    clearQueue(trip.id);
-    await fetch("/api/trips/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tripId: trip.id, action: "complete" }),
-    });
-    setTrip(null);
-    setPos(null);
-    setSosSent(false);
-    flash("Movement stopped — vehicle reported to base");
+    if (!trip || stopping) return;
+    setStopping(true);
+    try {
+      // Do not end the movement or clear local data unless the queue confirms
+      // that all pending GPS points were acknowledged by the server.
+      const synced = await flush(trip.id);
+      if (!synced) {
+        flash("GPS points are still waiting to sync. Check the connection and retry STOP.");
+        return;
+      }
+
+      const response = await fetch("/api/trips/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripId: trip.id, action: "complete" }),
+      });
+      if (!response.ok) {
+        flash("Could not stop movement. GPS data is retained; please retry STOP.");
+        return;
+      }
+
+      clearQueue(trip.id);
+      setTrip(null);
+      setPos(null);
+      setSosSent(false);
+      setFilteredFixes(0);
+      flash("Movement stopped — vehicle reported to base");
+    } catch {
+      flash("Network error while stopping. GPS data is retained; please retry STOP.");
+    } finally {
+      setStopping(false);
+    }
   };
 
   const raiseSos = async () => {
@@ -468,7 +528,17 @@ export default function DriverPage() {
             <span className="text-xs text-[#a89a76]">
               {speed != null ? `${speed} km/h` : "acquiring GPS…"}
             </span>
+            {typeof pos?.accuracy === "number" && !simMode && (
+              <span className={`text-[10px] ${pos.accuracy > 50 ? "text-amber-300" : "text-emerald-300"}`}>
+                ±{Math.round(pos.accuracy)} m
+              </span>
+            )}
           </div>
+          {filteredFixes > 0 && (
+            <div className="pointer-events-auto bg-amber-950/90 border border-amber-600/50 text-amber-200 rounded-lg px-3 py-1 text-[10px] font-semibold shadow-xl">
+              GPS diagnostics: {filteredFixes} low-quality/jump fix{filteredFixes === 1 ? "" : "es"} filtered
+            </div>
+          )}
           {gpsError && !simMode && (
             <button
               onClick={() => setSimMode(true)}
@@ -496,11 +566,12 @@ export default function DriverPage() {
       <div className="flex items-center justify-center gap-10 px-6 pt-3 pb-6 bg-gradient-to-t from-[#0c110a] via-[#0c110a]/70 to-transparent">
         <button
           onClick={stop}
-          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_35px_rgba(34,197,94,0.35)]"
+          disabled={stopping}
+          className="w-28 h-28 md:w-32 md:h-32 rounded-full flex flex-col items-center justify-center gap-1.5 bg-[#1f3a24] border-4 border-emerald-500/60 text-emerald-200 font-black tracking-[0.2em] shadow-[0_0_35px_rgba(34,197,94,0.35)] disabled:opacity-60 disabled:cursor-wait"
           aria-label="Stop movement"
         >
           <Square size={32} fill="currentColor" />
-          <span className="text-sm">STOP</span>
+          <span className="text-sm">{stopping ? "SYNCING…" : "STOP"}</span>
         </button>
         <button
           onClick={raiseSos}
