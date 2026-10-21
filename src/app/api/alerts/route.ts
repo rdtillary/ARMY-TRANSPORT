@@ -4,9 +4,9 @@ import { alerts, vehicles, users } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { requireRole } from "@/lib/auth";
 
-/** GET /api/alerts → recent alerts with vehicle + driver names. Admin + JCO. */
+/** GET /api/alerts → recent alerts with vehicle + driver names. Admin only. */
 export async function GET(req: Request) {
-  const a = requireRole(req, "officer", "jco");
+  const a = requireRole(req, "officer");
   if ("error" in a) return a.error;
 
   const rows = await db
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
 /**
  * POST /api/alerts
  *   {action: "resolve", id}                                   → Admin closes an alert
- *   {action: "create", kind, message, tripId?, vehicleId?, driverId?} → JCO/Admin escalation
+ *   {action: "create", kind, message, tripId?, vehicleId?, driverId?} → Admin escalation
  */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -49,10 +49,10 @@ export async function POST(req: Request) {
   }
 
   if (action === "create") {
-    const a = requireRole(req, "officer", "jco");
+    const a = requireRole(req, "officer");
     if ("error" in a) return a.error;
     const kind = ["flag", "delay", "breakdown", "sos"].includes(body.kind) ? body.kind : "flag";
-    const message = String(body.message || "Flagged by JCO for command review").slice(0, 500);
+    const message = String(body.message || "Flagged for command review").slice(0, 500);
     const [row] = await db
       .insert(alerts)
       .values({

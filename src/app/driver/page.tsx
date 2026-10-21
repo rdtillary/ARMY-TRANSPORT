@@ -429,7 +429,7 @@ export default function DriverPage() {
         </div>
 
         <p className="relative z-10 pb-6 text-center text-[10px] text-[#6d6349] tracking-[0.25em]">
-          LIVE TRACKING VISIBLE TO OFFICER & JCO
+          LIVE TRACKING VISIBLE TO ADMIN
         </p>
 
         {toast && (

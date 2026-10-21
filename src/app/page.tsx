@@ -1,15 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Truck, ShieldCheck, ChevronsUp, Lock, User, AlertCircle } from "lucide-react";
+import { Truck, ShieldCheck, ScanLine, Lock, User, AlertCircle } from "lucide-react";
 import { saveSession, getSession, type Session } from "@/lib/session";
 import McteLogo from "@/components/McteLogo";
 
-type Role = "officer" | "jco" | "driver";
+type Role = "officer" | "sentry" | "driver";
 
 const ROLES: { id: Role; label: string; sub: string; icon: any }[] = [
   { id: "officer", label: "Admin", sub: "Central Control Room", icon: ShieldCheck },
-  { id: "jco", label: "JCO", sub: "Monitoring & Data", icon: ChevronsUp },
+  { id: "sentry", label: "Sentry", sub: "Under-Vehicle Scanning", icon: ScanLine },
   { id: "driver", label: "Driver", sub: "Trip & GPS Tracking", icon: Truck },
 ];
 
@@ -25,7 +25,7 @@ export default function LoginPage() {
   /* One-time login: if a session already exists, jump straight to that terminal. */
   useEffect(() => {
     const s = getSession();
-    if (s && (s.role === "officer" || s.role === "jco" || s.role === "driver")) {
+    if (s && (s.role === "officer" || s.role === "sentry" || s.role === "driver")) {
       router.replace(`/${s.role}`);
     } else {
       setChecking(false);

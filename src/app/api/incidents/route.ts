@@ -6,9 +6,9 @@ import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** POST /api/incidents {id} — acknowledge/resolve an alarm. Admin + JCO. */
+/** POST /api/incidents {id} — acknowledge/resolve an alarm. Admin only. */
 export async function POST(req: Request) {
-  const a = requireRole(req, "officer", "jco");
+  const a = requireRole(req, "officer");
   if ("error" in a) return a.error;
 
   const body = await req.json().catch(() => ({}));

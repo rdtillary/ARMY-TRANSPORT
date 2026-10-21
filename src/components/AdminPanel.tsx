@@ -147,7 +147,7 @@ export default function AdminPanel() {
                   <label className={label}>Role / terminal</label>
                   <select className={input} value={p.role} onChange={(e) => setP({ ...p, role: e.target.value })}>
                     <option value="driver">Driver</option>
-                    <option value="jco">JCO</option>
+                    <option value="sentry">Sentry</option>
                     <option value="officer">Admin (Control Room)</option>
                   </select>
                 </div>
@@ -182,7 +182,7 @@ export default function AdminPanel() {
                 className={input}
                 value={pBulk}
                 onChange={(e) => setPBulk(e.target.value)}
-                placeholder={"role, serviceNo, name, unit\ndriver, DRV-3005, Sgt R. Kumar, 7th Armoured\njco, JCO-2003, Hav P. Das, Signal Corps\nadmin, ADM-002, Maj S. Gill, Central Control Room"}
+                placeholder={"role, serviceNo, name, unit\ndriver, DRV-3005, Sgt R. Kumar, 7th Armoured\nsentry, SEN-2003, Hav P. Das, Signal Corps\nadmin, ADM-002, Maj S. Gill, Central Control Room"}
               />
               <button onClick={addPeopleBulk} disabled={!pBulk.trim()} className="mt-2 w-full py-2 border border-[#8b6f2e]/50 text-[#d4c48a] font-extrabold rounded-lg text-xs hover:bg-[#8b6f2e]/15 disabled:opacity-35">
                 ADD ALL LISTED ACCOUNTS
@@ -207,7 +207,7 @@ export default function AdminPanel() {
                       className={`text-[9px] font-extrabold uppercase tracking-wider border rounded px-1.5 py-0.5 ${
                         u.role === "officer"
                           ? "text-rose-300 border-rose-600/50"
-                          : u.role === "jco"
+                          : u.role === "sentry"
                             ? "text-amber-300 border-amber-600/40"
                             : "text-emerald-300 border-emerald-600/40"
                       }`}

@@ -84,7 +84,7 @@ endpoint disappears.)
 ## Step 5 — Use your permanent app
 
 1. Open your permanent URL → the only built-in login is the Admin terminal:
-   ID **admin**, password **admin**. Create JCO/Driver accounts from the
+   ID **admin**, password **admin**. Create Sentry/Driver accounts from the
    Admin panel (see `ADMIN.md`) — log in once per device.
 2. **Phone PWA:** open the permanent URL in Chrome on your phone →
    ⋮ → *Add to Home screen* → it installs forever, pointing at this URL.

@@ -46,7 +46,7 @@ Everything for the APK is **already in this repo**:
 - `android/` — the complete Capacitor Android project (open directly in Android Studio)
 - `@capacitor/geolocation` — native GPS plugin (registered, manifest has location permissions)
 - `capacitor.config.ts` — APK configuration
-- Web app — Next.js server that every terminal (Officer / JCO / Driver) loads
+- Web app — Next.js server that every terminal (Officer / Sentry / Driver) loads
 
 ---
 
@@ -109,7 +109,7 @@ npx cap sync android
    login itself is ID `admin` / `admin`).
 3. Allow the **location permission** when Android asks (required for GPS).
 4. Select vehicle → **START MOVEMENT** → tracking begins.
-   The officer & JCO terminals see the vehicle number + position live on their maps.
+   The officer terminal sees the vehicle number + position live on their maps.
 5. No GPS signal / demo on a desk? Tick **Simulation mode** — the vehicle drives a
    demo route and all three terminals show it in real time.
 
@@ -120,7 +120,7 @@ npx cap sync android
 | Terminal | Service No | Password |
 |---|---|---|
 | Admin (central control room) | admin | admin |
-| JCO / Driver | created by the Admin from the Personnel panel | set at creation (default `army123`) |
+| Sentry / Driver | created by the Admin from the Personnel panel | set at creation (default `army123`) |
 
 ## Database
 

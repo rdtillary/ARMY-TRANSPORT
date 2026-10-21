@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 
-export type Role = "officer" | "jco" | "driver";
+export type Role = "officer" | "sentry" | "driver";
 export type AuthUser = { id: number; role: Role };
 
 export const COOKIE = "atc_token";

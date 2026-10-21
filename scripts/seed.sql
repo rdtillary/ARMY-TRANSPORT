@@ -2,7 +2,7 @@
 -- Apply with:  psql "$DATABASE_URL" -f scripts/seed.sql
 -- The ONLY built-in login is the central control room administrator:
 --   id = ADMIN   password = admin
--- All JCO and Driver accounts are created from the Admin terminal
+-- All Sentry and Driver accounts are created from the Admin terminal
 -- (Personnel & Fleet Administration panel).
 
 INSERT INTO users (name, role, service_no, unit, password) VALUES
@@ -13,17 +13,17 @@ ON CONFLICT (service_no) DO UPDATE
 -- Remove any legacy demo accounts if this script is re-run.
 DELETE FROM positions WHERE trip_id IN (
   SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
-  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+  WHERE u.service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004'));
 DELETE FROM checkpoints WHERE trip_id IN (
   SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
-  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+  WHERE u.service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004'));
 DELETE FROM alerts WHERE trip_id IN (
   SELECT t.id FROM trips t JOIN users u ON t.driver_id = u.id
-  WHERE u.service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'))
-   OR driver_id IN (SELECT id FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
+  WHERE u.service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004'))
+   OR driver_id IN (SELECT id FROM users WHERE service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004'));
 DELETE FROM trips WHERE driver_id IN (
-  SELECT id FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004'));
-DELETE FROM users WHERE service_no IN ('OFC-1001','JCO-2002','DRV-3003','DRV-3004');
+  SELECT id FROM users WHERE service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004'));
+DELETE FROM users WHERE service_no IN ('OFC-1001','SEN-2002','DRV-3003','DRV-3004');
 
 -- Starting fleet register (editable/deletable from the Admin terminal).
 INSERT INTO vehicles (reg_no, type, unit, fuel_pct, mileage, maintenance_due, status) VALUES

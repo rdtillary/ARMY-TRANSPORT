@@ -1,7 +1,13 @@
 import {
   pgTable, serial, text, integer, doublePrecision,
-  timestamp, boolean, date,
+  timestamp, boolean, date, customType,
 } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -109,5 +115,20 @@ export const broadcasts = pgTable("broadcasts", {
   fromName: text("from_name").notNull(),
   to: text("to").notNull(),
   message: text("message").notNull(),
+  ts: timestamp("ts").notNull().defaultNow(),
+});
+
+/** Sentry under-vehicle scans: the uploaded 360° footage + the stitched underside image. */
+export const sentryScans = pgTable("sentry_scans", {
+  id: serial("id").primaryKey(),
+  label: text("label").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  videoMime: text("video_mime").notNull(),
+  videoSize: integer("video_size").notNull(),
+  videoData: bytea("video_data").notNull(),
+  // Stitched image stored as a base64 data URL (same pattern as gate photos)
+  stitchedUrl: text("stitched_url").notNull(),
+  frames: integer("frames").notNull().default(0),
+  durationSec: doublePrecision("duration_sec").notNull().default(0),
   ts: timestamp("ts").notNull().defaultNow(),
 });

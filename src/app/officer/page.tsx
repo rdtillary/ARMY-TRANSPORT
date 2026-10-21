@@ -30,7 +30,7 @@ export default function OfficerPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [live, setLive] = useState<Live | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [to, setTo] = useState("jco");
+  const [to, setTo] = useState("sentry");
   const [msg, setMsg] = useState("");
   const [sent, setSent] = useState(false);
   const [tab, setTab] = useState<Tab>("live");
@@ -290,7 +290,7 @@ export default function OfficerPage() {
                 </h3>
                 <select value={to} onChange={(e) => setTo(e.target.value)}
                   className="w-full bg-[#141c0e] border border-[#8b6f2e]/30 rounded-lg px-2.5 py-2 text-xs font-bold focus:outline-none focus:border-[#c0a86c] mb-2">
-                  <option value="jco">To: JCO terminals</option>
+                  <option value="sentry">To: Sentry terminals</option>
                   <option value="driver">To: Drivers</option>
                   <option value="all">To: All units</option>
                 </select>

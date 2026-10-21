@@ -5,7 +5,7 @@ import { users } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { requireRole, hashPassword } from "@/lib/auth";
 
-const ROLES = ["officer", "jco", "driver"] as const;
+const ROLES = ["officer", "sentry", "driver"] as const;
 type Role = (typeof ROLES)[number];
 
 /** GET /api/users → all accounts (passwords are never returned). Admin only. */
@@ -107,7 +107,7 @@ async function createOne(b: any): Promise<any> {
   const unit = String(b.unit || "").trim() || "Unassigned";
   const password = String(b.password || "").trim() || "army123";
 
-  if (!ROLES.includes(role)) return { error: "Role must be admin, jco or driver", status: 400 };
+  if (!ROLES.includes(role)) return { error: "Role must be admin, sentry or driver", status: 400 };
   if (!name) return { error: "Name is required", status: 400 };
   if (!serviceNo) return { error: "Service number is required", status: 400 };
 

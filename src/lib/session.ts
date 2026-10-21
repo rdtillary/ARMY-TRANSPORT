@@ -1,7 +1,7 @@
 export type Session = {
   id: number;
   name: string;
-  role: "officer" | "jco" | "driver";
+  role: "officer" | "sentry" | "driver";
   unit: string;
   serviceNo: string;
   token?: string;

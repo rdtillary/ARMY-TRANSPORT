@@ -4,9 +4,9 @@ import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/ops/state — MT Park dashboard data (also runs the rule engine). Admin + JCO. */
+/** GET /api/ops/state — MT Park dashboard data (also runs the rule engine). Admin only. */
 export async function GET(req: Request) {
-  const a = requireRole(req, "officer", "jco");
+  const a = requireRole(req, "officer");
   if ("error" in a) return a.error;
   try {
     const state = await buildOpsState();

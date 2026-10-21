@@ -7,9 +7,9 @@ import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/trips/archive?status=all|completed|active — Admin + JCO only */
+/** GET /api/trips/archive?status=all|completed|active — Admin only */
 export async function GET(req: NextRequest) {
-  const auth = requireRole(req, "officer", "jco");
+  const auth = requireRole(req, "officer");
   if ("error" in auth) return auth.error;
 
   const status = req.nextUrl.searchParams.get("status") || "all";

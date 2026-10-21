@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "MCTE — AI Transport & Road Space Management",
   description:
-    "AI based transport and road space management system for the Military College of Telecommunication Engineering (MCTE) — officer command, JCO monitoring and driver GPS tracking terminals.",
+    "AI based transport and road space management system for the Military College of Telecommunication Engineering (MCTE) — officer command, Sentry under-vehicle scanning and driver GPS tracking terminals.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

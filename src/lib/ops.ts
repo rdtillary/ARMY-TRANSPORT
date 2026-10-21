@@ -16,7 +16,7 @@ const KIND_LABELS: Record<string, string> = {
   stopped_out:      "Tracking stopped but vehicle still OUT",
 };
 
-type Target = "admin" | "jco" | `driver:${number}`;
+type Target = "admin" | `driver:${number}`;
 
 async function notify(targets: Target[], n: {
   title: string; message: string;
@@ -102,7 +102,7 @@ export async function gateScan(input: {
   }).returning();
 
   // RULE 1 — Scanned OUT but tracking is OFF
-  // Notify admin + JCO only. No driver notification (no fixed driver per vehicle).
+  // Notify admin only. No driver notification (no fixed driver per vehicle).
   // Officer contacts driver via phone number stored in their service record.
   if (input.direction === "out" && !activeTrip) {
     const existing = await db.select().from(incidents).where(
@@ -115,7 +115,7 @@ export async function gateScan(input: {
         message: `${v.regNo} (${v.type}) has left MT Park but GPS tracking is OFF. Contact driver immediately.`,
         vehicleId: v.id, tripId: null, driverId,
       });
-      await notify(["admin", "jco"], {
+      await notify(["admin"], {
         title: `⚠ ${v.regNo} — OUT without tracking`,
         message: `${v.regNo} scanned OUT but GPS tracking is OFF. Contact driver to start tracking immediately.`,
         kind: "alarm", vehicleId: v.id,
@@ -166,7 +166,7 @@ export async function handleTripStopped(args: {
   await resolveOpen(args.vehicleId, ["tracking_on_in"]);
 
   // RULE 3 — Tracking stopped but vehicle still OUT
-  // Notify admin + JCO only. Officer contacts driver via phone (serviceNo field).
+  // Notify admin only. Officer contacts driver via phone (serviceNo field).
   if (v.parkStatus === "out") {
     const existing = await db.select().from(incidents).where(
       and(eq(incidents.vehicleId, v.id), eq(incidents.kind, "stopped_out"), eq(incidents.resolved, false))
@@ -178,7 +178,7 @@ export async function handleTripStopped(args: {
         message: `${v.regNo} tracking stopped but vehicle is still OUT of MT Park. Gate scan required on return.`,
         vehicleId: v.id, tripId: args.tripId, driverId: args.driverId,
       });
-      await notify(["admin", "jco"], {
+      await notify(["admin"], {
         title: `⚠ ${v.regNo} — Tracking stopped while OUT`,
         message: `${v.regNo} stopped GPS tracking but has not returned to MT Park. Contact driver to return immediately.`,
         kind: "alarm", vehicleId: v.id, tripId: args.tripId,
@@ -210,7 +210,7 @@ export async function evaluate() {
     await db.update(trips).set({ status: "completed", endedAt: new Date() }).where(eq(trips.id, row.tripId));
     await db.update(vehicles).set({ status: "available", pendingStopAt: null }).where(eq(vehicles.id, row.v.id));
     await resolveOpen(row.v.id);
-    await notify([`driver:${row.driverId}` as Target, "admin", "jco"], {
+    await notify([`driver:${row.driverId}` as Target, "admin"], {
       title: "Tracking auto-stopped",
       message: `${row.v.regNo} is inside MT Park — tracking switched off automatically (2-min grace elapsed).`,
       kind: "info", vehicleId: row.v.id, tripId: row.tripId,
@@ -240,7 +240,7 @@ export async function evaluate() {
         message: `${row.v.regNo} has tracking ON but is still inside MT Park. Use FORCE STOP TRACKING in admin panel.`,
         vehicleId: row.v.id, tripId: row.tripId, driverId: row.driverId,
       });
-      await notify(["admin", "jco"], {
+      await notify(["admin"], {
         title: `⚠ ${row.v.regNo} — Tracking ON inside MT Park`,
         message: `${row.v.regNo} tracking ON but still inside MT Park. Force-stop from admin panel or contact driver.`,
         kind: "alarm", vehicleId: row.v.id, tripId: row.tripId,
@@ -248,7 +248,7 @@ export async function evaluate() {
     }
   }
 
-  // RULE 3 repeat — nudge admin + JCO every 5 minutes for stopped_out vehicles
+  // RULE 3 repeat — nudge admin every 5 minutes for stopped_out vehicles
   const stoppedOut = await db.select({ i: incidents, regNo: vehicles.regNo })
     .from(incidents)
     .innerJoin(vehicles, eq(incidents.vehicleId, vehicles.id))
@@ -258,7 +258,7 @@ export async function evaluate() {
     const lastRepeat = row.i.lastRepeatAt?.getTime() ?? row.i.ts.getTime();
     if (now - lastRepeat >= 5 * 60 * 1000) {
       await db.update(incidents).set({ lastRepeatAt: new Date() }).where(eq(incidents.id, row.i.id));
-      await notify(["admin", "jco"], {
+      await notify(["admin"], {
         title: `⚠ ${row.regNo} — Still OUT, no tracking`,
         message: `${row.regNo} is still outside MT Park with tracking OFF. Contact driver.`,
         kind: "alarm", vehicleId: row.i.vehicleId,
@@ -284,7 +284,7 @@ export async function adminForceStopTracking(vehicleId: number) {
   await db.update(trips).set({ status: "completed", endedAt: new Date() }).where(eq(trips.id, trip.id));
   await db.update(vehicles).set({ status: "available", pendingStopAt: null }).where(eq(vehicles.id, vehicleId));
   await resolveOpen(vehicleId);
-  await notify(["admin", "jco"], {
+  await notify(["admin"], {
     title: `${v.regNo} — tracking force-stopped`,
     message: `Admin force-stopped tracking for ${v.regNo}. Trip ended.`,
     kind: "info", vehicleId, tripId: trip.id,

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "MCTE — AI Transport & Road Space Management",
   "short_name": "MCTE Transport",
-  "description": "AI based transport and road space management system — officer command, JCO monitoring and driver GPS tracking terminals.",
+  "description": "AI based transport and road space management system — officer command, Sentry under-vehicle scanning and driver GPS tracking terminals.",
   "lang": "en",
   "dir": "ltr",
   "categories": ["government", "productivity", "utilities"],

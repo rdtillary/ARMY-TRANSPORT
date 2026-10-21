@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /** A vehicle is "moving" (green) if its last fix is newer than this. */
 const FRESH_MS = 90_000;
 
-/** GET /api/tracking/live → live fleet picture for Officer + JCO terminals. */
+/** GET /api/tracking/live → live fleet picture for Officer terminal. */
 export async function GET() {
   const active = await db
     .select({

@@ -8,7 +8,7 @@ automatically:
 - ID: **admin**
 - Password: **admin**
 
-There are no other built-in accounts. Every JCO and Driver login is created
+There are no other built-in accounts. Every Sentry and Driver login is created
 from the Admin terminal.
 
 ## Where the controls are
@@ -18,7 +18,7 @@ from the Admin terminal.
 3. Use the **PERSONNEL** / **VEHICLES** tabs.
 
 ## Add one account
-Full name → Role (Driver / JCO / Admin) → Service number → Unit →
+Full name → Role (Driver / Sentry / Admin) → Service number → Unit →
 optional password → **ADD ACCOUNT**.
 - If no password is entered, it defaults to `army123` — give this to the
   person (or set a unique password at creation).
@@ -31,7 +31,7 @@ One person per line, comma or pipe separated:
 role, serviceNo, name, unit
 driver, DRV-3005, Sgt R. Kumar, 7th Armoured
 driver, DRV-3006, L/Nk A. Khan, 12th Mechanised
-jco, JCO-2003, Hav P. Das, Signal Corps
+sentry, SEN-2003, Hav P. Das, Signal Corps
 admin, ADM-002, Maj S. Gill, Central Control Room
 ```
 

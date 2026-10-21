@@ -18,7 +18,7 @@ which they return. It provides three role-based terminals:
    vehicle, an ANPR-style gate camera feed, automatic IN/OUT vehicle
    registers, contingency alarms, command broadcasts, personnel & fleet
    administration, and a complete trip archive.
-2. **JCO terminal (Monitoring)** — read/monitor view of the live map, fleet
+2. **Sentry terminal (Under-Vehicle Scanning)** — upload 360° under-vehicle footage; frames are stitched in the browser into one underside image; footage loops beside its stitched image
    entries, vehicle status (fuel/maintenance), gate scans and shared
    contingency alarms, with escalation and reporting.
 3. **Driver terminal (Android phone)** — after selecting the vehicle number
@@ -37,7 +37,7 @@ defined contingencies, including timed auto-actions (5-minute, 1-minute and
 
 ```
  ┌──────────────────────────┐   ┌──────────────────────────┐   ┌──────────────────────────┐
- │  DRIVER TERMINAL (phone) │   │  JCO TERMINAL (monitor)  │   │  ADMIN TERMINAL (control)│
+ │  DRIVER TERMINAL (phone) │   │  SENTRY TERMINAL (scan)   │   │  ADMIN TERMINAL (control)│
  │  GPS · START/STOP · SOS  │   │  live map · entries      │   │  map · gate · archive    │
  └───────────┬──────────────┘   └────────────┬─────────────┘   └────────────┬─────────────┘
              │ HTTPS (JSON REST)            │ polling 4-6 s                 │
@@ -97,9 +97,9 @@ defined contingencies, including timed auto-actions (5-minute, 1-minute and
 
 | Route | File | Role |
 |---|---|---|
-| `/` | `page.tsx` | Login / terminal chooser (Admin, JCO, Driver cards) |
+| `/` | `page.tsx` | Login / terminal chooser (Admin, Sentry, Driver cards) |
 | `/officer` | `officer/page.tsx` | **Admin** — Central Control Room (three tabs) |
-| `/jco` | `jco/page.tsx` | **JCO** monitoring dashboard |
+| `/sentry` | `sentry/page.tsx` | **Sentry** under-vehicle scanning (upload + stitched image table) |
 | `/driver` | `driver/page.tsx` | **Driver** phone UI (vehicle select / START / live map / STOP / SOS) |
 
 All interactive pages start with `"use client"` (React client components);
@@ -119,7 +119,7 @@ data is fetched from the API with `fetch`.
   modal that draws the GPS route on a map with gate photos and incidents.
 - **`AdminPanel.tsx`** — Admin *Personnel & Fleet* tab: create/delete
   accounts and vehicles, single and bulk.
-- **`JcoMtPanel.tsx`** — JCO-side MT Park status and shared alarms.
+- **`src/lib/stitch.ts`** — browser-side frame sampler, motion estimator and push-broom stitcher used by the Sentry terminal.
 
 ### 4.3 Client utilities (`src/lib/`)
 
@@ -149,14 +149,15 @@ data is fetched from the API with `fetch`.
 
 | Table | Key columns | Purpose |
 |---|---|---|
-| `users` | id, name, role (`officer`/`jco`/`driver`), service_no (unique), unit, password | Login accounts |
+| `users` | id, name, role (`officer`/`sentry`/`driver`), service_no (unique), unit, password | Login accounts |
 | `vehicles` | id, reg_no (unique), type, unit, fuel_pct, mileage, maintenance_due, status, **park_status (`in`/`out`)**, **pending_stop_at** | Fleet register + gate state |
 | `trips` | id, driver_id→users, vehicle_id→vehicles, started_at, ended_at, status (`active`/`completed`) | One START→STOP movement |
 | `positions` | id, trip_id, vehicle_id, lat, lng, speed, heading, accuracy, ts | Raw GPS breadcrumbs (map trail + archive) |
 | `gate_events` | id, vehicle_id, direction (`in`/`out`), photo_url, plate_text, confidence, driver_id, ts | Camera/ANPR capture log |
 | `incidents` | id, kind, message, vehicle_id, trip_id, driver_id, ts, last_repeat_at, resolved, resolved_at | Open contingency alarms |
-| `notifications` | id, target (`admin`/`jco`/`driver:<id>`/`all`), title, message, kind, read | In-terminal messaging & driver nudges |
-| `alerts` | id, kind (`sos`/`flag`/…), message, links, resolved | SOS and JCO escalation feed |
+| `sentry_scans` | id, label, uploaded_by, video (bytea), stitched_url, frames, duration_sec, ts | Under-vehicle footage + stitched image |
+| `notifications` | id, target (`admin`/`driver:<id>`/`all`), title, message, kind, read | In-terminal messaging & driver nudges |
+| `alerts` | id, kind (`sos`/`flag`/…), message, links, resolved | SOS and escalation feed |
 | `broadcasts` | id, from_name, to, message, ts | Command-wide text orders |
 | `checkpoints` | id, trip_id, lat, lng, note, ts | Manual checkpoint log |
 
@@ -187,14 +188,15 @@ Route handlers live in `src/app/api/**/route.ts` and exchange JSON.
 | `POST /api/trips` | START: create trip, first position, mark vehicle active; invokes rule engine |
 | `POST /api/trips/track` | Ingest a GPS fix (lat/lng/speed/heading/accuracy) |
 | `POST /api/trips/action` | `complete` (STOP), `checkpoint`, or `sos` |
-| `GET /api/tracking/live` | Live fleet snapshot for Admin/JCO maps (latest fix, age→status) |
+| `GET /api/tracking/live` | Live fleet snapshot for Admin maps (latest fix, age→status) |
 | `POST /api/gate/scan` | Camera scan: JSON `{vehicleId, direction}` **or multipart photo** — the photo path runs ANPR, matches the fleet and logs the scan |
 | `POST /api/anpr/recognize` | Reads the plate from an uploaded photo (cloud or on-board OCR) and returns ranked fleet matches |
 | `POST /api/gate/simulate` | Demo helper: simulates the next camera crossing |
 | `GET /api/ops/state` | Full MT Park dashboard payload (also **runs the rule engine** first) |
 | `GET /api/notifications?userId=&role=` · `POST /api/notifications` | Per-terminal inbox; mark read |
 | `POST /api/incidents` | Acknowledge/resolve an alarm |
-| `GET /api/alerts` · `POST /api/alerts` | SOS/flag list; resolve or create (JCO escalation) |
+| `GET/POST /api/sentry/scans` · `DELETE /api/sentry/scans/:id` · `GET /api/sentry/scans/:id/video` | Sentry scans: list, upload (footage + stitched JPEG), delete, range-streamed footage |
+| `GET /api/alerts` · `POST /api/alerts` | SOS/flag list; resolve or create (escalation) |
 | `GET /api/broadcasts` · `POST /api/broadcasts` | Command orders |
 | `GET /api/trips/archive?status=` | All trips with point counts; **distance computed in JS (haversine)** |
 | `GET /api/trips/:id` | Full trip record: decimated GPS path, gate scans in window, incidents |
@@ -203,7 +205,7 @@ Route handlers live in `src/app/api/**/route.ts` and exchange JSON.
 
 **Security model (project scope):** password verification is server-side;
 the only built-in account is the central administrator
-(`admin`/`admin`); all driver/JCO accounts are created by the administrator.
+(`admin`/`admin`); all driver/Sentry accounts are created by the administrator.
 For a fielded system this would be extended with hashed passwords (e.g.
 bcrypt), session tokens/JWT, HTTPS-only cookies and role middleware on every
 route — noted under Future Work.
@@ -213,14 +215,14 @@ route — noted under Future Work.
 ## 7. The MT Park rule engine (`src/lib/ops.ts`)
 
 `gateScan()` handles a camera event and `evaluate()` runs on every dashboard
-poll (each Admin/JCO refresh). The four specified contingencies:
+poll (each Admin refresh). The four specified contingencies:
 
 1. **OUT but tracking OFF** — when a vehicle is scanned OUT and has no active
-   trip: create a `tracking_off_out` incident; alarm Admin + JCO; send the
+   trip: create a `tracking_off_out` incident; alarm Admin; send the
    driver *"TURN ON TRACKING — you are OUT of MT park."* Cleared
    automatically when the driver presses START.
 2. **Tracking ON while still INSIDE after 5 minutes** — active trip, vehicle
-   park state still `in`, age ≥ 5 min: one alarm to Admin, JCO and driver.
+   park state still `in`, age ≥ 5 min: one alarm to Admin and driver.
 3. **STOP while still OUT** — completing a trip while park state is `out`:
    raise a `stopped_out` incident and **re-notify every 60 seconds**
    (`last_repeat_at`) until the vehicle is scanned back IN.
@@ -243,7 +245,7 @@ amber, SOS trip = red.
 
 1. Driver logs in once → selects `0045 KJ 2231` → presses **START**.
 2. `POST /api/trips` creates the trip; the phone begins GPS uploads to
-   `/api/trips/track`; the Admin/JCO map now shows the moving marker.
+   `/api/trips/track`; the Admin map now shows the moving marker.
 3. The gate camera scans the vehicle leaving → `POST /api/gate/scan`
    (direction `out`). A photo + plate reading is stored, the register moves
    the row OUT, and because tracking is already ON a confirmation is sent.
@@ -376,7 +378,7 @@ down. Caching is versioned; error responses (e.g. 404) are never cached.
 src/
   app/
     page.tsx                 Login / terminal chooser
-    officer|jco|driver/      Role dashboards
+    officer|sentry|driver/      Role dashboards
     api/...                  REST route handlers (§6)
   components/                UI building blocks (§4.2)
   lib/                       session, GPS, simulator, rule engine
