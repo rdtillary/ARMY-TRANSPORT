@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { gateScan } from "@/lib/ops";
 import { recognizePlate, compactPlate, scorePlate } from "@/lib/anpr";
 import { requireRole } from "@/lib/auth";
+import { ensureSchema } from "@/db/migrate";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
   const auth = requireRole(req, "officer");
   if ("error" in auth) return auth.error;
 
+  await ensureSchema();
   const ctype = req.headers.get("content-type") || "";
 
   /* ─────────────────────────────────── JSON path (manual table button) */
