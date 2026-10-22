@@ -29,9 +29,9 @@ const esc = (v: string) =>
 /** Self-styled (inline) label so it needs no stylesheet change. `withText=false` gives a dot only. */
 export function placeLabelHtml(name: string, withText = true): string {
   const dot =
-    '<span style="width:8px;height:8px;border-radius:2px;background:#d4c48a;border:1.5px solid #1a1508;box-shadow:0 0 0 2px rgba(212,196,138,.3);flex-shrink:0;display:inline-block"></span>';
+    '<span style="width:8px;height:8px;border-radius:2px;background:rgba(212,196,138,.55);border:1px solid rgba(26,21,8,.5);flex-shrink:0;display:inline-block"></span>';
   const text = withText
-    ? `<span style="background:rgba(14,20,9,.88);color:#f3e9c0;border:1px solid rgba(139,111,46,.7);padding:1px 6px 2px;border-radius:5px;font-size:10px;font-weight:800;letter-spacing:.04em;line-height:1.25;white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,.5)">${esc(name)}</span>`
+    ? `<span style="background:rgba(14,20,9,.38);color:rgba(243,233,192,.85);border:1px solid rgba(139,111,46,.35);padding:1px 6px 2px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.04em;line-height:1.25;white-space:nowrap;text-shadow:0 0 3px rgba(0,0,0,.7)">${esc(name)}</span>`
     : "";
   return `<div data-place="${esc(name)}" style="display:flex;align-items:center;gap:5px;pointer-events:none;white-space:nowrap">${dot}${text}</div>`;
 }

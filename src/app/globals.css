@@ -19,7 +19,7 @@
   flex-shrink: 0;
 }
 .vtag {
-  background: rgba(14, 20, 9, 0.92);
+  background: rgba(14, 20, 9, 0.5);
   color: #eee8d0;
   border: 1.5px solid currentColor;
   padding: 2px 8px 3px;
@@ -28,8 +28,7 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1.2;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
+  }
 .vtag i {
   font-style: normal;
   font-weight: 500;
