@@ -26,6 +26,9 @@ const STATEMENTS = [
      ts timestamp not null default now()
    )`,
 
+  // Auto-scan captures are stored even when no fleet vehicle is matched
+  `alter table gate_events alter column vehicle_id drop not null`,
+
   // Built-in admin account for the control room terminal.
   // Keeps the documented default login working even on a fresh database.
   `insert into users (name, role, service_no, unit, password)

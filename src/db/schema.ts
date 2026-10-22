@@ -35,7 +35,7 @@ export const vehicles = pgTable("vehicles", {
 
 export const gateEvents = pgTable("gate_events", {
   id: serial("id").primaryKey(),
-  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
+  vehicleId: integer("vehicle_id").references(() => vehicles.id),
   direction: text("direction").notNull(),
   photoUrl: text("photo_url").notNull(),
   plateText: text("plate_text").notNull(),

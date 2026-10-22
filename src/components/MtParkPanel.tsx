@@ -38,8 +38,8 @@ type Photo = {
   plateText: string;
   confidence: number;
   ts: string;
-  regNo: string;
-  type: string;
+  regNo: string | null;
+  type: string | null;
   driverName: string | null;
 };
 
@@ -50,7 +50,7 @@ type OpsState = {
   totals: { total: number; in: number; out: number; trackingOn: number };
 };
 
-const AUTO_SCAN_INTERVAL = 8000;
+const AUTO_SCAN_INTERVAL = 4000;
 
 export default function MtParkPanel() {
   const [state, setState] = useState<OpsState | null>(null);
@@ -69,6 +69,7 @@ export default function MtParkPanel() {
   const [lastScanResult, setLastScanResult] = useState<string | null>(null);
   const [lastScanColor, setLastScanColor] = useState<"green" | "amber" | "red">("amber");
   const [showAutoPanel, setShowAutoPanel] = useState(false);
+  const [lastShot, setLastShot] = useState<{ url: string; at: number } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -161,9 +162,14 @@ export default function MtParkPanel() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
       if (!blob) return;
+      setLastShot((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return { url: URL.createObjectURL(blob), at: Date.now() };
+      });
       const fd = new FormData();
       fd.append("image", blob, "auto_capture.jpg");
       fd.append("direction", "auto");
+      fd.append("saveUnmatched", "1");
       const res = await fetch("/api/gate/scan", { method: "POST", body: fd });
       const d = await res.json();
       if (d.ok && d.scanned) {
@@ -173,11 +179,13 @@ export default function MtParkPanel() {
       } else if (d.needConfirmation) {
         const plate = d.detectedPlate || "unreadable";
         const conf = d.confidence ? `${d.confidence.toFixed(0)}%` : "low";
-        setLastScanResult(`⚠ Plate: ${plate} (${conf}) — open Gate Camera to confirm manually`);
+        setLastScanResult(`⚠ Saved to captures — plate: ${plate} (${conf}), no fleet match`);
         setLastScanColor("amber");
+        await load();
       } else if (d.error) {
         setLastScanResult(`✗ ${d.error}`);
         setLastScanColor("red");
+        await load();
       }
     } catch {
       setLastScanResult("✗ Scan failed — check connection");
@@ -316,11 +324,21 @@ export default function MtParkPanel() {
                 <p className="text-[10px] uppercase tracking-widest text-[#a89a76] font-bold mb-1">How it works</p>
                 <ul className="text-xs text-[#8b8064] space-y-1 leading-relaxed">
                   <li>• Camera captures a frame every {AUTO_SCAN_INTERVAL / 1000} seconds</li>
+                  <li>• Every frame is saved to Latest Captures (delete manually)</li>
                   <li>• Plate Recognizer reads the number plate</li>
                   <li>• ≥ 70% match → logged automatically</li>
                   <li>• &lt; 70% → open Gate Camera to confirm</li>
                 </ul>
               </div>
+              {lastShot && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-[#a89a76] font-bold mb-1">
+                    Last photo clicked · {fmtClock(new Date(lastShot.at).toISOString())}
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={lastShot.url} alt="Last capture" className="w-full max-h-40 object-cover rounded-lg border border-[#8b6f2e]/30" />
+                </div>
+              )}
               {lastScanResult && (
                 <div className={`rounded-lg border px-3 py-2.5 text-xs font-bold ${resultColorClass}`}>
                   <p className="text-[9px] uppercase tracking-widest opacity-70 mb-0.5">Last scan result</p>
@@ -336,6 +354,56 @@ export default function MtParkPanel() {
           </div>
         </div>
       )}
+
+      {/* Latest gate camera captures */}
+      <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4">
+        <h3 className="text-sm font-extrabold tracking-widest text-[#d4c48a] mb-3 flex items-center gap-2">
+          <Camera size={15} /> LATEST GATE CAMERA CAPTURES — ANPR
+        </h3>
+        {(!state?.photos || state.photos.length === 0) && (
+          <div className="text-center py-10">
+            <Camera size={34} className="mx-auto text-[#4a3a1a] mb-2" />
+            <p className="text-xs text-[#8b8064]">
+              No captures yet. Press <b>SCAN OUT / SCAN IN</b> or switch on <b>Auto Camera Scan</b>.
+            </p>
+          </div>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          {state?.photos.map((p) => (
+            <div key={p.id}
+              className="rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#141c0e] hover:border-[#c0a86c]/60 transition flex flex-col">
+             <div role="button" tabIndex={0} onClick={() => setPhotoLightbox(p)}
+               onKeyDown={(e) => { if (e.key === "Enter") setPhotoLightbox(p); }}
+               className="text-left cursor-pointer flex-1">
+              <div className="relative h-32">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.photoUrl} alt={p.plateText} className="w-full h-full object-cover" />
+                <span className={`absolute top-1.5 left-1.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  p.direction === "out" ? "bg-amber-600 text-white" : p.direction === "auto" ? "bg-slate-600 text-white" : "bg-emerald-700 text-white"
+                }`}>
+                  {p.direction === "out" ? "▶ EXIT" : p.direction === "auto" ? "● CAPTURE" : "◀ ENTRY"}
+                </span>
+                <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-black/70 text-emerald-300 px-1.5 py-0.5 rounded">
+                  ANPR ✓ {p.confidence.toFixed(1)}%
+                </span>
+              </div>
+              <div className="p-2">
+                <div className="font-extrabold text-sm tracking-wide">{p.plateText}</div>
+                <div className="text-[10px] text-[#8b8064] truncate">{p.type || "No fleet match"}</div>
+                <div className="flex items-center justify-between text-[10px] text-[#a89a76] mt-1">
+                  <span>{p.driverName && p.driverName !== "—" ? p.driverName : "no driver"}</span>
+                  <span>{fmtClock(p.ts)}</span>
+                </div>
+              </div>
+             </div>
+             <button onClick={() => deletePhoto(p)} disabled={deletingPhotoId === p.id}
+               className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-extrabold tracking-wider text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border-t border-rose-500/30 disabled:opacity-50 transition">
+               <Trash2 size={12} /> {deletingPhotoId === p.id ? "DELETING…" : "DELETE"}
+             </button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -458,56 +526,6 @@ export default function MtParkPanel() {
             Rules: OUT without tracking · tracking ON inside after 5 min ·
             tracking stopped while OUT · auto-stop 2 min after scan-IN.
           </p>
-        </div>
-      </div>
-
-      {/* Latest gate camera captures */}
-      <div className="bg-gradient-to-b from-[#1e2a16] to-[#161f10] border border-[#8b6f2e]/20 rounded-2xl p-4">
-        <h3 className="text-sm font-extrabold tracking-widest text-[#d4c48a] mb-3 flex items-center gap-2">
-          <Camera size={15} /> LATEST GATE CAMERA CAPTURES — ANPR
-        </h3>
-        {(!state?.photos || state.photos.length === 0) && (
-          <div className="text-center py-10">
-            <Camera size={34} className="mx-auto text-[#4a3a1a] mb-2" />
-            <p className="text-xs text-[#8b8064]">
-              No captures yet. Press <b>SCAN OUT / SCAN IN</b> or switch on <b>Auto Camera Scan</b>.
-            </p>
-          </div>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          {state?.photos.map((p) => (
-            <div key={p.id}
-              className="rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#141c0e] hover:border-[#c0a86c]/60 transition flex flex-col">
-             <div role="button" tabIndex={0} onClick={() => setPhotoLightbox(p)}
-               onKeyDown={(e) => { if (e.key === "Enter") setPhotoLightbox(p); }}
-               className="text-left cursor-pointer flex-1">
-              <div className="relative h-32">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.photoUrl} alt={p.plateText} className="w-full h-full object-cover" />
-                <span className={`absolute top-1.5 left-1.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                  p.direction === "out" ? "bg-amber-600 text-white" : "bg-emerald-700 text-white"
-                }`}>
-                  {p.direction === "out" ? "▶ EXIT" : "◀ ENTRY"}
-                </span>
-                <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-black/70 text-emerald-300 px-1.5 py-0.5 rounded">
-                  ANPR ✓ {p.confidence.toFixed(1)}%
-                </span>
-              </div>
-              <div className="p-2">
-                <div className="font-extrabold text-sm tracking-wide">{p.plateText}</div>
-                <div className="text-[10px] text-[#8b8064] truncate">{p.type}</div>
-                <div className="flex items-center justify-between text-[10px] text-[#a89a76] mt-1">
-                  <span>{p.driverName && p.driverName !== "—" ? p.driverName : "no driver"}</span>
-                  <span>{fmtClock(p.ts)}</span>
-                </div>
-              </div>
-             </div>
-             <button onClick={() => deletePhoto(p)} disabled={deletingPhotoId === p.id}
-               className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-extrabold tracking-wider text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border-t border-rose-500/30 disabled:opacity-50 transition">
-               <Trash2 size={12} /> {deletingPhotoId === p.id ? "DELETING…" : "DELETE"}
-             </button>
-            </div>
-          ))}
         </div>
       </div>
 

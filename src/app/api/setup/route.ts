@@ -70,7 +70,7 @@ const DDL = [
   `alter table vehicles add column if not exists pending_stop_at timestamptz`,
   `create table if not exists gate_events (
     id serial primary key,
-    vehicle_id integer not null references vehicles(id),
+    vehicle_id integer references vehicles(id),
     direction text not null,
     photo_url text not null,
     plate_text text not null,

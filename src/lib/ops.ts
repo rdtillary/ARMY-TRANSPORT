@@ -331,7 +331,7 @@ export async function buildOpsState() {
     regNo: vehicles.regNo, type: vehicles.type, driverName: users.name,
   })
     .from(gateEvents)
-    .innerJoin(vehicles, eq(gateEvents.vehicleId, vehicles.id))
+    .leftJoin(vehicles, eq(gateEvents.vehicleId, vehicles.id))
     .leftJoin(users, eq(gateEvents.driverId, users.id))
     .orderBy(desc(gateEvents.ts), desc(gateEvents.id))
     .limit(12);

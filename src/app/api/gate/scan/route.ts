@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { vehicles } from "@/db/schema";
+import { vehicles, gateEvents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { gateScan } from "@/lib/ops";
@@ -123,7 +123,20 @@ export async function POST(req: Request) {
   }
 
   if (!chosen) {
+    // Auto camera scan: keep every frame in the captures grid, vehicle or not.
+    let savedId: number | null = null;
+    if (String(form.get("saveUnmatched") || "") === "1") {
+      const [saved] = await db.insert(gateEvents).values({
+        vehicleId: null,
+        direction: "auto",
+        photoUrl,
+        plateText: plateText || "NO PLATE",
+        confidence: ocr.confidence || 0,
+      }).returning({ id: gateEvents.id });
+      savedId = saved?.id ?? null;
+    }
     return NextResponse.json({
+      saved: savedId !== null,
       ok: false,
       needConfirmation: true,
       detectedPlate: plateText || null,
@@ -172,8 +185,17 @@ export async function POST(req: Request) {
       event,
     });
   } catch (e: any) {
+    if (String(form.get("saveUnmatched") || "") === "1") {
+      await db.insert(gateEvents).values({
+        vehicleId: null,
+        direction: "auto",
+        photoUrl,
+        plateText: plateText || "NO PLATE",
+        confidence: ocr.confidence || 0,
+      });
+    }
     return NextResponse.json(
-      { error: e?.message || "scan failed" },
+      { error: e?.message || "scan failed", saved: String(form.get("saveUnmatched") || "") === "1" },
       { status: 409 }
     );
   }
