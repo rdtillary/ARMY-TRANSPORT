@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera, LogIn, LogOut, Siren, X, RefreshCw,
-  Route, Truck, Video, VideoOff, ScanLine, StopCircle,
+  Route, Truck, Video, VideoOff, ScanLine, StopCircle, Trash2,
 } from "lucide-react";
 import { timeAgo, fmtClock } from "@/lib/session";
 import AnprGate from "@/components/AnprGate";
@@ -59,6 +59,7 @@ export default function MtParkPanel() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [forceStopBusyId, setForceStopBusyId] = useState<number | null>(null);
   const [photoLightbox, setPhotoLightbox] = useState<Photo | null>(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null);
 
   // Auto scan state
   const [camReady, setCamReady] = useState(false);
@@ -82,6 +83,26 @@ export default function MtParkPanel() {
     } catch { /* keep last state */ }
     setNow(Date.now());
   }, []);
+
+  const deletePhoto = async (p: Photo) => {
+    if (!confirm(`Delete capture of ${p.plateText}? This cannot be undone.`)) return;
+    setDeletingPhotoId(p.id);
+    try {
+      const r = await fetch(`/api/gate/events?id=${p.id}`, { method: "DELETE" });
+      if (r.status === 401 || r.status === 403) {
+        alert("Only an officer/admin can delete captures.");
+      } else if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error || "Could not delete capture.");
+      } else {
+        setPhotoLightbox((cur) => (cur?.id === p.id ? null : cur));
+        await load();
+      }
+    } catch {
+      alert("Network error — capture not deleted.");
+    }
+    setDeletingPhotoId(null);
+  };
 
   useEffect(() => {
     load();
@@ -455,8 +476,11 @@ export default function MtParkPanel() {
         )}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
           {state?.photos.map((p) => (
-            <button key={p.id} onClick={() => setPhotoLightbox(p)}
-              className="text-left rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#141c0e] hover:border-[#c0a86c]/60 transition">
+            <div key={p.id}
+              className="rounded-xl overflow-hidden border border-[#8b6f2e]/25 bg-[#141c0e] hover:border-[#c0a86c]/60 transition flex flex-col">
+             <div role="button" tabIndex={0} onClick={() => setPhotoLightbox(p)}
+               onKeyDown={(e) => { if (e.key === "Enter") setPhotoLightbox(p); }}
+               className="text-left cursor-pointer flex-1">
               <div className="relative h-32">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.photoUrl} alt={p.plateText} className="w-full h-full object-cover" />
@@ -477,7 +501,12 @@ export default function MtParkPanel() {
                   <span>{fmtClock(p.ts)}</span>
                 </div>
               </div>
-            </button>
+             </div>
+             <button onClick={() => deletePhoto(p)} disabled={deletingPhotoId === p.id}
+               className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-extrabold tracking-wider text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border-t border-rose-500/30 disabled:opacity-50 transition">
+               <Trash2 size={12} /> {deletingPhotoId === p.id ? "DELETING…" : "DELETE"}
+             </button>
+            </div>
           ))}
         </div>
       </div>
