@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Truck, ShieldCheck, ScanLine, Lock, User, AlertCircle } from "lucide-react";
 import { saveSession, getSession, type Session } from "@/lib/session";
 import McteLogo from "@/components/McteLogo";
+import { PasskeyLoginButton } from "@/components/PasskeyButtons";
 
 type Role = "officer" | "sentry" | "driver";
 
@@ -186,6 +187,21 @@ export default function LoginPage() {
               >
                 {busy ? "VERIFYING…" : "LOG IN"}
               </button>
+
+              {/* Passkey (Face ID / fingerprint / device PIN) — Admin terminal only */}
+              {role === "officer" && (
+                <>
+                  <div className="flex items-center gap-3 text-[10px] text-[#6d6349] tracking-widest">
+                    <span className="h-px flex-1 bg-[#8b6f2e]/25" /> OR <span className="h-px flex-1 bg-[#8b6f2e]/25" />
+                  </div>
+                  <PasskeyLoginButton
+                    onSuccess={(s) => {
+                      saveSession(s);
+                      router.push("/officer");
+                    }}
+                  />
+                </>
+              )}
 
               <p className="text-center text-[10px] text-[#6d6349] tracking-wider">
                 Credentials are issued by the central control room administrator.
