@@ -13,6 +13,7 @@ import MtParkPanel from "@/components/MtParkPanel";
 import ArchivePanel from "@/components/ArchivePanel";
 import DriversPanel from "@/components/DriversPanel";
 import CampusMap3D from "@/components/CampusMap3D";
+import { PasskeyRegisterButton } from "@/components/PasskeyButtons";
 import { getSession, timeAgo, type Session } from "@/lib/session";
 import { CAMPUS_PLACES, CAMPUS_VIEW_CENTER } from "@/lib/campusPlaces";
 
@@ -124,8 +125,13 @@ export default function OfficerPage() {
     <div className="min-h-screen bg-[#121810] text-[#eee8d0]">
       <TopBar role="ADMIN — CENTRAL CONTROL ROOM" name={session.name} unit={session.unit} />
 
+      {/* Passkey: register Face ID / fingerprint / device PIN for this admin */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pt-3 flex justify-end">
+        <PasskeyRegisterButton />
+      </div>
+
       {/* Tabs */}
-      <div className="sticky top-16 z-[700] bg-[#141b10]/95 backdrop-blur border-b border-[#8b6f2e]/25">
+      <div className="sticky top-16 z-[700] bg-[#141b10]/95 backdrop-blur border-b border-[#8b6f2e]/25 mt-3">
         <div className="max-w-7xl mx-auto px-4 md:px-8 flex gap-1.5 overflow-x-auto">
           {tabs.map((t) => (
             <button
