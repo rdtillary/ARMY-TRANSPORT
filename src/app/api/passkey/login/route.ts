@@ -1,3 +1,4 @@
+// → replace src/app/api/passkey/login/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { sql } from "drizzle-orm";
@@ -5,6 +6,7 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
 import { startSession } from "@/lib/passkey-session";
+import { signToken } from "@/lib/auth";
 import {
   PASSKEY_ROLES, ensurePasskeyTables, saveChallenge, takeChallenge, unb64, RP_ID, ORIGIN,
 } from "@/lib/passkeys";
@@ -12,17 +14,17 @@ import {
 export const dynamic = "force-dynamic";
 const COOKIE = "pk_login";
 
-/** GET: start login. Uses discoverable credentials, so no username needed. */
+/** GET: start login. Discoverable credentials, so no username needed. */
 export async function GET() {
   await ensurePasskeyTables();
   const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: "required" });
   const cid = await saveChallenge(options.challenge, null);
   const res = NextResponse.json(options);
-  res.cookies.set(COOKIE, cid, { httpOnly: true, secure: true, sameSite: "strict", path: "/api/passkey", maxAge: 300 });
+  res.cookies.set(COOKIE, cid, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/passkey", maxAge: 300 });
   return res;
 }
 
-/** POST: finish login. Body: { response } */
+/** POST: finish login. Body: { response }. Returns the same shape as /api/auth/login. */
 export async function POST(req: Request) {
   await ensurePasskeyTables();
   const body = await req.json().catch(() => ({}));
@@ -32,7 +34,8 @@ export async function POST(req: Request) {
   if (!ch || !body.response?.id) return fail();
 
   const r: any = await db.execute(sql`
-    select p.id, p.user_id, p.public_key, p.counter, u.role, u.name
+    select p.id, p.user_id, p.public_key, p.counter,
+           u.role, u.name, u.unit, u.service_no
     from passkeys p join users u on u.id = p.user_id
     where p.credential_id = ${body.response.id} limit 1`);
   const row = r.rows?.[0];
@@ -46,7 +49,12 @@ export async function POST(req: Request) {
     });
     if (!v.verified) return fail();
     await db.execute(sql`update passkeys set counter = ${v.authenticationInfo.newCounter} where id = ${row.id}`);
-    const res = NextResponse.json({ ok: true });
+
+    const token = signToken({ id: row.user_id, role: row.role });
+    const res = NextResponse.json({
+      id: row.user_id, name: row.name, role: row.role,
+      unit: row.unit, serviceNo: row.service_no, token,
+    });
     await startSession(res, { id: row.user_id, role: row.role, name: row.name });
     return res;
   } catch {
