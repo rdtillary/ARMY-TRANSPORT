@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 
 export const RP_ID = process.env.PASSKEY_RP_ID || "localhost";           // e.g. mt-park.onrender.com
 export const ORIGIN = process.env.PASSKEY_ORIGIN || "http://localhost:3000"; // e.g. https://mt-park.onrender.com
+// Roles allowed to use passkeys (your Role type: officer | sentry | driver).
+export const PASSKEY_ROLES = ["officer"];
 export const RP_NAME = "MT Park Admin";
 
 let ready = false;
